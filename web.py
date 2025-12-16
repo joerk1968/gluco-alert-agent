@@ -1,5 +1,6 @@
 # web.py
 from datetime import datetime, timezone
+from datetime import datetime, timezone
 from flask import Flask
 import threading
 import time
@@ -65,6 +66,52 @@ def health():
 
 # Start scheduler in background
 threading.Thread(target=run_scheduler, daemon=True).start()
-
+@app.route('/force-alert')
+def force_alert():
+    """Trigger an immediate glucose alert for testing/demo purposes."""
+    print("🚨 MANUAL ALERT TRIGGERED!")
+    
+    # Generate a synthetic low glucose reading for testing
+    test_data = {
+        "glucose": 65,  # Simulate hypoglycemia
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "trend": "falling"
+    }
+    
+    # Get LLM advice
+    advice = get_glucose_advice(
+        glucose_level=test_data["glucose"],
+        trend=test_data["trend"],
+        context="manual test alert"
+    )
+    print(f"💡 Generated advice: {advice}")
+    
+    # Send WhatsApp alert
+    whatsapp_result = send_whatsapp_alert(
+        glucose_level=test_data["glucose"],
+        timestamp=test_data["timestamp"],
+        advice=advice
+    )
+    print(f"📲 WhatsApp result: {whatsapp_result}")
+    
+    # Fallback to SMS if WhatsApp fails
+    sms_result = ""
+    if "❌" in whatsapp_result:
+        print("🔁 Falling back to SMS...")
+        sms_result = send_glucose_alert(
+            glucose_level=test_data["glucose"],
+            timestamp=test_data["timestamp"],
+            advice=advice
+        )
+        print(f"📱 SMS result: {sms_result}")
+    
+    return {
+        "status": "Manual alert triggered successfully",
+        "glucose_level": test_data["glucose"],
+        "timestamp": test_data["timestamp"],
+        "advice": advice,
+        "whatsapp_result": whatsapp_result,
+        "sms_result": sms_result if sms_result else "Not used"
+    }
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8000)
