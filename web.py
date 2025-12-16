@@ -1,4 +1,6 @@
 # web.py
+from flask import request
+from twilio.twiml.messaging_response import MessagingResponse
 from datetime import datetime, timezone
 from datetime import datetime, timezone
 from flask import Flask
@@ -52,7 +54,26 @@ def run_scheduler():
     while True:
         schedule.run_pending()
         time.sleep(60)
-
+@app.route('/whatsapp-webhook', methods=['POST'])
+def whatsapp_webhook():
+    """Handle incoming WhatsApp messages (required by Twilio sandbox)."""
+    # Log the incoming message
+    message_body = request.values.get('Body', '').lower()
+    from_number = request.values.get('From', '')
+    print(f"📱 Incoming WhatsApp message from {from_number}: '{message_body}'")
+    
+    # Simple auto-reply for sandbox compliance
+    if "test" in message_body or "hello" in message_body:
+        response_text = "✅ GlucoAlert AI is active! Send 'status' to check system health."
+    elif "status" in message_body:
+        response_text = f"🟢 System Status: Healthy\n⏰ Next checks: 7:30, 12:00, 18:30, 22:00 UTC"
+    else:
+        response_text = "💡 I'm a glucose monitoring bot. Reply 'status' for system info."
+    
+    # Create TwiML response
+    resp = MessagingResponse()
+    resp.message(response_text)
+    return str(resp)
 @app.route('/')
 def health():
     # Get current time in UTC (Render's default timezone)
