@@ -31,7 +31,7 @@ def check_and_alert():
 
 def run_scheduler():
     # Schedule 4x/day (adjust as needed)
-    for t in ["07:30","8:30", "12:00", "18:30","20:00", "22:00"]:
+    for t in ["7:30","8:30", "12:00", "18:30","20:00", "22:00"]:
         schedule.every().day.at(t).do(check_and_alert)
     while True:
         schedule.run_pending()
