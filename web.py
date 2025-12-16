@@ -1,6 +1,5 @@
 # web.py
 from datetime import datetime, timezone
-import pytz
 from flask import Flask
 import threading
 import time
@@ -32,9 +31,23 @@ def check_and_alert():
         print(f"Error: {e}")
 
 def run_scheduler():
-    # Schedule 4x/day (adjust as needed)
-    for t in ["7:30","8:30", "12:00", "18:30","20:00", "22:00"]:
-        schedule.every().day.at(t).do(check_and_alert)
+    """Run checks at 4 fixed times daily with proper error handling."""
+    times = ["7:30","9:30","12:00", "18:30", "22:00"]  # Linux-compatible format (no leading zero)
+    successful_times = []
+    
+    for t in times:
+        try:
+            schedule.every().day.at(t).do(check_and_alert)
+            successful_times.append(t)
+            print(f"✅ Successfully scheduled: {t}")
+        except Exception as e:
+            print(f"❌ Failed to schedule {t}: {str(e)}")
+    
+    if successful_times:
+        print(f"✅ Scheduler active with {len(successful_times)} times: {', '.join(successful_times)}")
+    else:
+        print("❌ No times were successfully scheduled!")
+    
     while True:
         schedule.run_pending()
         time.sleep(60)
