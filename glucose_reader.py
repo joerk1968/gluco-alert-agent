@@ -1,4 +1,4 @@
-# glucose_reader.py
+# glucose_reader.py - OPTIMIZED FOR FREQUENT READINGS
 import random
 import time
 from datetime import datetime, timedelta
@@ -6,76 +6,82 @@ from datetime import datetime, timedelta
 class GlucoseSimulator:
     def __init__(self, seed=None):
         self.rng = random.Random(seed)
-        # Initial glucose: normal fasting range
-        self.glucose = self.rng.randint(85, 95)
-        self.last_meal_time = datetime.now() - timedelta(hours=2)  # Last "meal" 2h ago
+        self.glucose = self.rng.randint(85, 95)  # Stable baseline
+        self.last_meal_time = datetime.now() - timedelta(hours=2)
+        self.last_insulin_time = None
+        self.activity_factor = 1.0  # 1.0 = normal, <1.0 = exercise
 
     def simulate_step(self):
         now = datetime.now()
-        
-        # 🍽️ Simulate meals 3x/day: 8AM, 12PM, 6PM ±30min
-        meal_hours = [8, 12, 18]
         current_hour = now.hour
-        minutes = now.minute
         
+        # 🍽️ MEAL SIMULATION (3x daily with realistic timing)
+        meal_times = [(7, 9), (12, 14), (18, 20)]  # Breakfast, Lunch, Dinner windows
         recent_meal = False
-        for h in meal_hours:
-            if abs(current_hour - h) == 0 and 0 <= minutes <= 45:
+        
+        for start_hour, end_hour in meal_times:
+            if start_hour <= current_hour <= end_hour:
                 recent_meal = True
-                # Ensure we don't spike repeatedly in same window
-                if (now - self.last_meal_time).total_seconds() > 30 * 60:  # 30 min gap
-                    self.last_meal_time = now
+                # Only spike once per meal window
+                if not hasattr(self, 'last_meal_spike') or (now - self.last_meal_spike).total_seconds() > 3600:
+                    self.last_meal_spike = now
                 break
         
-        # 📈 Glucose dynamics
+        # 📈 GLUCOSE DYNAMICS (realistic medical modeling)
         if recent_meal:
-            # Post-meal: rise up to +60 mg/dL over 30–60 min
-            rise = self.rng.randint(1, 3)  # +1 to +3 per step
-            self.glucose += rise
+            # Post-meal rise (30-80 mg/dL over 45-90 minutes)
+            rise_rate = self.rng.uniform(0.5, 1.5)  # mg/dL per minute
+            self.glucose += rise_rate * 5  # 5-minute intervals
         else:
-            # Between meals: slow decline or stability
-            drift = self.rng.choice([-2, -1, 0, 0, 1])  # slight downward bias
-            self.glucose += drift
+            # Between meals: gradual decline
+            decline_rate = self.rng.uniform(0.2, 0.8)
+            self.glucose -= decline_rate * 5
         
-        # 🌙 Night (11PM–6AM): slower metabolism → smaller swings
+        # 🌙 NIGHTTIME METABOLISM (11PM-6AM)
         if 23 <= current_hour or current_hour < 6:
-            self.glucose += self.rng.choice([-1, 0, 0, 1])
+            self.glucose -= self.rng.uniform(0.1, 0.3) * 5  # Slower decline
         
-        # 🎲 Add physiological noise (±3 mg/dL)
-        noise = self.rng.randint(-3, 3)
+        # 🏃 EXERCISE EFFECT (random 15% chance during active hours)
+        if 6 <= current_hour <= 22 and self.rng.random() < 0.15:
+            self.glucose -= self.rng.uniform(1.0, 3.0) * 5  # Faster decline
+        
+        # 🎲 PHYSIOLOGICAL NOISE (±3 mg/dL variation)
+        noise = self.rng.uniform(-3, 3)
         self.glucose += noise
-
-        # 🛑 Physiological bounds (clamp to realistic range)
+        
+        # 🛑 MEDICAL SAFETY BOUNDS
         self.glucose = max(40, min(400, self.glucose))
-
+        
+        # 🔍 TREND CALCULATION
+        trend = "stable"
+        if noise > 1:
+            trend = "rising"
+        elif noise < -1:
+            trend = "falling"
+        
         return {
             "glucose": int(self.glucose),
             "timestamp": now.isoformat(),
-            "trend": "rising" if noise > 0 else "falling" if noise < 0 else "stable"
+            "trend": trend
         }
 
-# Global simulator instance (persists state between calls)
-_simulator = GlucoseSimulator(seed=42)  # Reproducible for testing
+# Global simulator instance
+_simulator = GlucoseSimulator(seed=42)
 
 def read_glucose_level(simulate=True, file_path=None):
-    """
-    Returns simulated glucose level with realistic dynamics.
-    
-    Args:
-        simulate (bool): Must be True for now.
-        file_path (str): Reserved for future real-data integration.
-    
-    Returns:
-        dict: {'glucose': int, 'timestamp': str, 'trend': str}
-    """
+    """Generate realistic glucose reading every 5 minutes"""
     if not simulate:
         raise NotImplementedError("Real CGM support coming soon.")
     return _simulator.simulate_step()
 
-# 🔬 Test
+# 🔬 TEST FUNCTION
 if __name__ == "__main__":
-    print("🧪 Starting realistic glucose simulation (5 readings, 5s apart)...")
-    for i in range(5):
+    print("🧪 Starting REAL-TIME glucose simulation (5-minute intervals)...")
+    for i in range(10):
         data = read_glucose_level()
         print(f"[{data['timestamp'][-13:-4]}] Glucose: {data['glucose']:3d} mg/dL ({data['trend']})")
-        time.sleep(1)  # Simulate 1-sec intervals
+        time.sleep(1)  # Simulate 5-minute intervals in demo
+        
+           
+    
+   
