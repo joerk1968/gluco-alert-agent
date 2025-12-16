@@ -1,4 +1,6 @@
 # web.py
+from datetime import datetime, timezone
+import pytz
 from flask import Flask
 import threading
 import time
@@ -39,7 +41,14 @@ def run_scheduler():
 
 @app.route('/')
 def health():
-    return {"status": "GlucoAlert Agent Running", "next_runs": [j.next_run.strftime("%H:%M") for j in schedule.jobs]}
+    # Get current time in UTC (Render's default timezone)
+    now = datetime.now(timezone.utc)
+    return {
+        "status": "GlucoAlert Agent Running",
+        "server_time_utc": now.strftime("%Y-%m-%d %H:%M:%S"),
+        "scheduled_times": ["7:30", "12:00", "18:30", "22:00"],
+        "timezone": "UTC"
+    }
 
 # Start scheduler in background
 threading.Thread(target=run_scheduler, daemon=True).start()
