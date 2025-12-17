@@ -16,33 +16,55 @@ from config import HYPO_THRESHOLD, HYPER_THRESHOLD
 app = Flask(__name__)
 
 def check_and_alert():
-    """Read glucose, get LLM advice, send alert if needed."""
+    """Read glucose, get context-aware LLM advice, send alert if needed."""
     try:
+        current_time = datetime.now(timezone.utc)
         data = read_glucose_level()
         glucose = data["glucose"]
         timestamp = data["timestamp"]
         trend = data.get("trend", "stable")
-        utc_time = datetime.now(timezone.utc).strftime("%H:%M")
+        context = data.get("context", {})
         
-        print(f"[{utc_time}] Glucose: {glucose} mg/dL ({trend})")
+        # Format time for display
+        display_time = current_time.strftime("%H:%M")
         
-        # ALERT LOGIC: Send alerts for abnormal readings
-        if glucose <= HYPO_THRESHOLD or glucose >= HYPER_THRESHOLD:
-            print(f"⚠️ ALERT TRIGGERED! Glucose: {glucose} mg/dL")
-            advice = get_glucose_advice(glucose, trend, "automated monitoring")
-            print(f"💡 Advice: {advice[:60]}...")
+        print(f"[{display_time}] Glucose: {glucose:.1f} mg/dL ({trend})")
+        if context:
+            context_str = []
+            if context.get('meal'): context_str.append(f"🍽️{context['meal']}")
+            if context.get('exercise'): context_str.append("🏃")
+            if context_str:
+                print(f"   Context: {' '.join(context_str)}")
+        
+        # 🚨 ALERT LOGIC with context awareness
+        is_critical_low = glucose <= 55  # Severe hypoglycemia
+        is_low = 55 < glucose <= 70
+        is_high = 180 <= glucose < 250
+        is_critical_high = glucose >= 250  # DKA risk
+        
+        if is_critical_low or is_low or is_high or is_critical_high:
+            print(f"⚠️ {'CRITICAL ' if is_critical_low or is_critical_high else ''}ALERT TRIGGERED!")
             
-            # Try WhatsApp first
-            result = send_whatsapp_alert(glucose, timestamp, advice)
+            # Get context-aware advice
+            advice = get_glucose_advice(glucose, trend, context)
+            print(f"💡 Advice: {advice[:80]}...")
+            
+            # Create severity-tagged message
+            severity = "🚨 CRITICAL" if is_critical_low or is_critical_high else "⚠️ ALERT"
+            status = "LOW" if glucose <= 70 else "HIGH"
+            
+            # Send WhatsApp with enhanced message
+            enhanced_advice = f"{severity}: {advice}"
+            result = send_whatsapp_alert(glucose, timestamp, enhanced_advice)
             print(f"📲 WhatsApp: {result}")
             
             # Fallback to SMS if needed
             if "❌" in result:
                 print("🔁 SMS fallback...")
-                result = send_glucose_alert(glucose, timestamp, advice)
+                result = send_glucose_alert(glucose, timestamp, enhanced_advice)
                 print(f"📱 SMS: {result}")
         else:
-            print(f"✅ Normal glucose: {glucose} mg/dL")
+            print(f"✅ Normal glucose: {glucose:.1f} mg/dL")
             
     except Exception as e:
         print(f"🚨 Error in check_and_alert: {e}")
