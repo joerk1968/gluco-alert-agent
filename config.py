@@ -25,7 +25,10 @@ USE_SMS_ONLY = True  # ⚠️ SET THIS TO TRUE DURING WHATSAPP LIMIT PERIOD
 # 🩺 Glucose Thresholds (mg/dL) - MEDICALLY ACCURATE
 HYPO_THRESHOLD = 70   # Alert if < 70 (not <= 70)
 HYPER_THRESHOLD = 180 # Alert if > 180 (not >= 180)
-
+# config.py - CRITICAL UPDATES
+USE_SMS_ONLY = True  # Must be True during WhatsApp daily limit period
+HYPO_THRESHOLD = 70   # Alert if < 70 (not <= 70)
+HYPER_THRESHOLD = 180 # Alert if > 180 (not >= 180)
 # 🧠 LLM Settings
 LLM_MODEL = "gpt-4o-mini"
 MAX_TOKENS = 300
