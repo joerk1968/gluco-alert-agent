@@ -51,9 +51,9 @@ def get_glucose_advice(glucose_level, trend="stable", context=""):
             temperature=0.2,  # Low randomness for medical safety
         )
 
-        # Get response
-        chain = prompt | llm
-        response = chain.invoke({})
+       # ✅ CORRECT LLM RESPONSE HANDLING
+       response = chain.invoke({})
+       advice = response.content.strip() if hasattr(response, 'content') else str(response).strip()
         
         # ✅ CRITICAL FIX: Handle response properly as string
         if hasattr(response, 'content'):
