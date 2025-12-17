@@ -1,207 +1,100 @@
-# glucose_reader.py - MEDICALLY ACCURATE SYNTHETIC GLUCOSE GENERATOR
+# glucose_reader.py - REALISTIC SYNTHETIC DATA GENERATOR
 import random
-import math
 from datetime import datetime, timedelta, timezone
 import time
 
-class AdvancedGlucoseSimulator:
+class GlucoseSimulator:
     def __init__(self):
-        """Initialize with dynamic seed based on current time for unique sequences"""
-        current_time = int(time.time())
-        self.rng = random.Random(current_time)  # Dynamic seed = unique each run
-        
-        # Patient baseline characteristics (realistic diabetic profiles)
-        self.baseline_glucose = self.rng.uniform(90, 110)  # Fasting baseline
-        self.insulin_resistance = self.rng.uniform(0.8, 1.3)  # 1.0 = normal
-        self.carb_ratio = self.rng.uniform(8, 15)  # grams of carbs per unit insulin
-        
-        # Meal timing patterns (realistic human schedule)
-        self.meal_schedule = {
-            'breakfast': (7, 9),    # 7-9 AM
-            'lunch': (12, 14),      # 12-2 PM  
-            'dinner': (18, 20),     # 6-8 PM
-            'snack': (15, 16)       # 3-4 PM
-        }
-        
-        # Current state
-        self.last_glucose = self.baseline_glucose
-        self.last_update = datetime.now(timezone.utc)
+        """Initialize with dynamic values for realistic simulation"""
+        self.rng = random.Random(int(time.time()))  # Unique seed each run
+        self.base_glucose = self.rng.uniform(85, 105)  # Baseline fasting glucose
+        self.last_glucose = self.base_glucose
+        self.last_meal_time = None
         self.current_trend = "stable"
-        self.recent_meal = None
-        self.recent_insulin = None
-        self.recent_exercise = False
-
-    def simulate_glucose(self, current_time):
-        """Generate medically accurate glucose based on time of day and context"""
         
-        hour = current_time.hour
-        minute = current_time.minute
+    def simulate_reading(self):
+        """Generate realistic glucose reading with physiological patterns"""
+        now = datetime.now(timezone.utc)
+        hour = now.hour
         
-        # 🌅 DAWN PHENOMENON (3AM-8AM natural rise)
+        # 🌅 Dawn phenomenon (3-8 AM natural rise)
         dawn_effect = 0
         if 3 <= hour <= 8:
             dawn_factor = (hour - 3) / 5  # 0 to 1 over 5 hours
-            dawn_effect = 15 * dawn_factor * self.insulin_resistance
+            dawn_effect = 15 * dawn_factor
             
-        # 🍽️ MEAL EFFECTS (realistic postprandial spikes)
+        # 🍽️ Meal effects (simulate 3 main meals)
         meal_effect = 0
-        meal_context = None
+        current_time = now.time()
         
-        for meal, (start_hour, end_hour) in self.meal_schedule.items():
-            if start_hour <= hour <= end_hour:
-                # Probability of eating during this window
-                if self.rng.random() < 0.85:  # 85% chance of eating
-                    time_in_window = (hour - start_hour) + minute/60
-                    window_duration = end_hour - start_hour
-                    
-                    # Peak spike timing (30-45 min after meal start)
-                    peak_time = window_duration * 0.6
-                    spike_intensity = {
-                        'breakfast': self.rng.uniform(30, 50),
-                        'lunch': self.rng.uniform(40, 70),
-                        'dinner': self.rng.uniform(35, 60),
-                        'snack': self.rng.uniform(15, 30)
-                    }[meal]
-                    
-                    # Bell curve spike pattern
-                    meal_effect = spike_intensity * math.exp(-0.5 * ((time_in_window - peak_time) / 1.5) ** 2)
-                    meal_context = meal
-                    break
+        # Breakfast effect (7-10 AM)
+        if 7 <= hour <= 10:
+            if not self.last_meal_time or (now - self.last_meal_time).total_seconds() > 7200:  # 2 hours since last meal
+                self.last_meal_time = now
+                meal_effect = self.rng.uniform(30, 60)  # Post-breakfast spike
+                
+        # Lunch effect (12-2 PM)
+        elif 12 <= hour <= 14:
+            if not self.last_meal_time or (now - self.last_meal_time).total_seconds() > 7200:
+                self.last_meal_time = now
+                meal_effect = self.rng.uniform(40, 80)  # Post-lunch spike
+                
+        # Dinner effect (6-9 PM)
+        elif 18 <= hour <= 21:
+            if not self.last_meal_time or (now - self.last_meal_time).total_seconds() > 7200:
+                self.last_meal_time = now
+                meal_effect = self.rng.uniform(35, 70)  # Post-dinner spike
         
-        # 🏃 EXERCISE EFFECT (random 20% chance during active hours)
-        exercise_effect = 0
-        if 6 <= hour <= 21 and self.rng.random() < 0.2:  # 20% chance of exercise
-            exercise_duration = self.rng.uniform(20, 45)  # minutes
-            exercise_intensity = self.rng.uniform(0.5, 1.5)  # mild to moderate
-            exercise_effect = -exercise_intensity * 0.8 * exercise_duration/30  # glucose lowering
-            self.recent_exercise = True
-        
-        # 🌙 NIGHTTIME METABOLISM (11PM-6AM)
+        # 🌙 Nighttime decline (10 PM - 6 AM)
         nighttime_effect = 0
-        if 23 <= hour or hour < 6:
-            nighttime_factor = 1.0 if hour < 3 else 0.7  # deeper drop early night
-            nighttime_effect = -self.rng.uniform(0.3, 0.8) * nighttime_factor * 5  # gradual decline
+        if 22 <= hour or hour < 6:
+            nighttime_effect = -self.rng.uniform(0.5, 1.5) * 5  # Gradual decline
         
-        # 🎲 PHYSIOLOGICAL NOISE (real sensor variation)
+        # 🎲 Physiological noise (real sensor variation)
         noise = self.rng.uniform(-3, 3)
         
-        # 📈 CALCULATE CURRENT GLUCOSE
-        base_glucose = self.baseline_glucose
+        # 📈 Calculate current glucose
         current_glucose = (
-            base_glucose + 
-            dawn_effect + 
-            meal_effect + 
-            exercise_effect + 
-            nighttime_effect + 
+            self.base_glucose +
+            dawn_effect +
+            meal_effect +
+            nighttime_effect +
             noise
         )
         
-        # 🛑 MEDICAL SAFETY BOUNDS
+        # 🛑 Medical safety bounds
         current_glucose = max(40, min(350, current_glucose))
         
-        # 🔍 TREND CALCULATION (based on change from last reading)
-        time_diff = (current_time - self.last_update).total_seconds() / 60  # minutes
-        if time_diff > 0:
-            change_rate = (current_glucose - self.last_glucose) / time_diff
-            if change_rate > 2:
-                trend = "rising rapidly"
-            elif change_rate > 0.5:
-                trend = "rising"
-            elif change_rate < -2:
-                trend = "falling rapidly"
-            elif change_rate < -0.5:
-                trend = "falling"
-            else:
-                trend = "stable"
+        # 🔍 Determine trend (based on change from last reading)
+        if current_glucose > self.last_glucose + 2:
+            trend = "rising"
+        elif current_glucose < self.last_glucose - 2:
+            trend = "falling"
         else:
-            trend = self.current_trend
+            trend = "stable"
         
-        # 📊 UPDATE STATE
+        # 📊 Update state for next reading
         self.last_glucose = current_glucose
-        self.last_update = current_time
-        self.current_trend = trend
-        self.recent_meal = meal_context
         
         return {
             "glucose": round(current_glucose, 1),
-            "timestamp": current_time.isoformat(),
-            "trend": trend,
-            "context": {
-                "meal": meal_context,
-                "exercise": self.recent_exercise,
-                "time_of_day": "night" if (23 <= hour or hour < 6) else "day"
-            }
+            "timestamp": now.isoformat(),
+            "trend": trend
         }
 
-    def get_reading(self):
-        """Get current glucose reading with realistic timing"""
-        current_time = datetime.now(timezone.utc)
-        return self.simulate_glucose(current_time)
-
-# Global simulator instance (starts fresh on each app restart)
-_simulator = AdvancedGlucoseSimulator()
+# Global simulator instance
+_simulator = GlucoseSimulator()
 
 def read_glucose_level(simulate=True, file_path=None):
-    """
-    Generate realistic glucose reading with physiological patterns
-    
-    Args:
-        simulate (bool): Must be True for now
-        file_path (str): Reserved for future real-data integration
-    
-    Returns:
-        dict: {
-            'glucose': float,  # mg/dL
-            'timestamp': str,  # ISO format
-            'trend': str,      # 'rising', 'falling', 'stable', etc.
-            'context': dict    # meal/exercise/time context
-        }
-    """
+    """Get current glucose reading"""
     if not simulate:
-        raise NotImplementedError("Real CGM support coming soon.")
-    return _simulator.get_reading()
+        raise NotImplementedError("Real CGM support coming soon")
+    return _simulator.simulate_reading()
 
-# 🔬 TEST FUNCTION - Run to see realistic patterns
+# 🔬 Test function
 if __name__ == "__main__":
-    print("🧪 Starting MEDICALLY ACCURATE glucose simulation...")
-    print("⏰ Reading every 5 minutes for 2 hours (simulated time)\n")
-    
-    simulator = AdvancedGlucoseSimulator()
-    
-    # Simulate 24 readings (2 hours at 5-minute intervals)
-    start_time = datetime.now(timezone.utc)
-    for i in range(24):
-        current_time = start_time + timedelta(minutes=i*5)
-        data = simulator.simulate_glucose(current_time)
-        
-        # Color-coded output for trends
-        trend_symbol = {
-            "rising rapidly": "↑↑",
-            "rising": "↑", 
-            "falling rapidly": "↓↓",
-            "falling": "↓",
-            "stable": "→"
-        }.get(data['trend'], "?")
-        
-        context_str = ""
-        if data['context']['meal']:
-            context_str += f"🍽️{data['context']['meal'][:3]} "
-        if data['context']['exercise']:
-            context_str += "🏃 "
-            
-        print(f"[{current_time.strftime('%H:%M')}] {data['glucose']:5.1f} mg/dL {trend_symbol} {context_str.strip()}")
-        
-        # Highlight alerts
-        if data['glucose'] <= 70:
-            print(f"  ⚠️  HYPOGLYCEMIA ALERT! Context: {data['context']}")
-        elif data['glucose'] >= 180:
-            print(f"  ⚠️  HYPERGLYCEMIA ALERT! Context: {data['context']}")
-        
-        time.sleep(0.3)  # Faster demo
-    
-    print("\n✅ Simulation complete. Patterns include:")
-    print("   • Dawn phenomenon (early morning rise)")
-    print("   • Post-meal spikes with realistic timing")
-    print("   • Nighttime glucose decline")
-    print("   • Exercise-induced drops")
-    print("   • Physiological noise (±3 mg/dL)")
+    print("🧪 Testing realistic glucose simulation...")
+    for i in range(10):
+        data = read_glucose_level()
+        print(f"[{data['timestamp'][-13:-4]}] Glucose: {data['glucose']} mg/dL ({data['trend']})")
+        time.sleep(1)  # Simulate 5-minute intervals
