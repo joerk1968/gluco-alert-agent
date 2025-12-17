@@ -1,68 +1,72 @@
-# llm_advisor.py - FIXED FOR STRING RESPONSES
+# llm_advisor.py - FIXED LLM ADVICE GENERATOR
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from config import OPENAI_API_KEY, LLM_MODEL, MAX_TOKENS
-import json
 
 def get_glucose_advice(glucose_level, trend="stable", context=""):
     """
-    Gets AI-generated advice for abnormal glucose.
-    FIXED: Handles string responses properly.
+    Get AI-generated advice for abnormal glucose levels
+    FIXED: Properly handles string responses
     """
     if not OPENAI_API_KEY:
-        return "⚠️ LLM advice unavailable: missing OpenAI key."
+        return "⚠️ LLM advice unavailable: missing OpenAI API key"
 
     try:
-        # Define prompt
+        # System prompt with safety guardrails
         system_prompt = (
             "You are a diabetes care assistant. Give concise, safe, evidence-based advice. "
-            "Never suggest insulin dosing. Focus on: carbs, hydration, rechecking, when to seek help. "
+            "NEVER suggest insulin dosing or medication changes. "
+            "For lows (≤70 mg/dL): focus on fast-acting carbs. "
+            "For highs (≥180 mg/dL): focus on hydration and rechecking. "
+            "Always include when to seek emergency help. "
             "Use simple language. Max 3 sentences."
         )
         
+        # Context-aware user prompt
+        if glucose_level <= 70:
+            condition = "low blood sugar (hypoglycemia)"
+            action_focus = "immediate treatment with fast-acting carbohydrates"
+        else:
+            condition = "high blood sugar (hyperglycemia)"
+            action_focus = "hydration and monitoring"
+            
         user_prompt = (
-            f"Glucose: {glucose_level} mg/dL ({'low' if glucose_level <= 70 else 'high' if glucose_level >= 180 else 'normal'}), "
-            f"trend: {trend}. Context: '{context}'. What should the patient do now?"
+            f"Glucose reading: {glucose_level} mg/dL ({trend}) during {context}. "
+            f"This indicates {condition}. "
+            f"What immediate actions should the patient take for {action_focus}? "
+            "Include when to seek emergency help."
         )
 
+        # Create prompt template
         prompt = ChatPromptTemplate.from_messages([
             ("system", system_prompt),
             ("human", user_prompt)
         ])
 
-        # Init LLM
+        # Initialize LLM
         llm = ChatOpenAI(
             model=LLM_MODEL,
             api_key=OPENAI_API_KEY,
             max_tokens=MAX_TOKENS,
-            temperature=0.3
+            temperature=0.2,  # Low randomness for medical safety
         )
 
-        # Chain & invoke
+        # Get response
         chain = prompt | llm
         response = chain.invoke({})
         
-        # ✅ CRITICAL FIX: Handle both string and message responses
+        # ✅ CRITICAL FIX: Handle response properly as string
         if hasattr(response, 'content'):
             advice = response.content.strip()
-        elif isinstance(response, str):
-            advice = response.strip()
         else:
-            # Try to extract content from various response formats
-            try:
-                response_dict = json.loads(str(response))
-                advice = response_dict.get('content', str(response))
-            except:
-                advice = str(response)
+            advice = str(response).strip()
         
-        # Safety fallback
+        # Safety fallbacks
         if not advice or len(advice) < 10:
             if glucose_level <= 70:
-                advice = "Consume 15g fast-acting carbs (e.g., juice). Recheck in 15 minutes. If still low, repeat and contact provider."
-            elif glucose_level >= 180:
-                advice = "Hydrate well and consider light activity. Recheck in 1-2 hours. If persistently high, contact your healthcare provider."
+                advice = "Consume 15g fast-acting carbs (4 oz juice or glucose tablets). Recheck in 15 minutes. If still low or you feel worse, call emergency services."
             else:
-                advice = "Glucose is in normal range. Continue regular monitoring and stay hydrated."
+                advice = "Drink 16 oz water and avoid carbohydrates. Recheck in 1-2 hours. If >250 mg/dL with nausea/vomiting, seek emergency help."
         
         return advice
 
@@ -71,12 +75,17 @@ def get_glucose_advice(glucose_level, trend="stable", context=""):
         print(f"🚨 LLM Error: {error_msg}")
         return error_msg
 
-# 🔬 Test
+# 🔬 Test function
 if __name__ == "__main__":
-    print("🧠 Testing LLM advisor (low glucose)...")
-    advice = get_glucose_advice(glucose_level=62, trend="falling", context="fasting")
-    print(f"💡 Advice:\n{advice}")
-
+    print("🧠 Testing LLM advisor...")
+    advice = get_glucose_advice(65, "falling", "fasting overnight")
+    print(f"💡 Advice for low glucose:\n{advice}")
+    
+    advice = get_glucose_advice(210, "rising", "after dinner")
+    print(f"\n💡 Advice for high glucose:\n{advice}")
+           
+              
+    
 
    
          
