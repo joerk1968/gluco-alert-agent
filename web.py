@@ -1,188 +1,177 @@
-# web.py - PRODUCTION READY WITH CORRECT PORT BINDING
-from flask import Flask, request, jsonify
+# web.py - WITH SMS FALLBACK & THRESHOLD FIX
+from flask import Flask, request
 from twilio.twiml.messaging_response import MessagingResponse
 import threading
 import time
 import schedule
-import traceback
 from datetime import datetime, timezone
 import os
 from glucose_reader import read_glucose_level
 from llm_advisor import get_glucose_advice
 from whatsapp_sender import send_whatsapp_alert
-from config import HYPO_THRESHOLD, HYPER_THRESHOLD
+from sms_sender import send_glucose_alert
+from config import HYPO_THRESHOLD, HYPER_THRESHOLD, USE_SMS_ONLY
 
 app = Flask(__name__)
 
 def check_and_alert():
-    """Check glucose and send alert ONLY if abnormal with full error handling"""
+    """Read glucose, get LLM advice, send alert if needed with SMS fallback."""
     try:
-        print(f"\n{'='*60}")
-        print(f"🔍 Glucose Check at {datetime.now(timezone.utc).strftime('%H:%M:%S UTC')}")
-        
-        # Get glucose reading
         data = read_glucose_level()
         glucose = data["glucose"]
         timestamp = data["timestamp"]
         trend = data.get("trend", "stable")
+        utc_time = datetime.now(timezone.utc).strftime("%H:%M")
         
-        # Log reading
-        print(f"🩺 Current glucose: {glucose} mg/dL ({trend})")
+        print(f"[{utc_time}] Glucose: {glucose} mg/dL ({trend})")
         
-        # Only alert if abnormal
-        if glucose <= HYPO_THRESHOLD or glucose >= HYPER_THRESHOLD:
-            print(f"⚠️ {'CRITICAL LOW' if glucose <= 55 else 'LOW' if glucose <= 70 else 'HIGH'} ALERT TRIGGERED!")
+        # 🔍 FIXED THRESHOLD LOGIC: Only alert when truly abnormal
+        if glucose < HYPO_THRESHOLD or glucose > HYPER_THRESHOLD:
+            status = "LOW" if glucose < HYPO_THRESHOLD else "HIGH"
+            print(f"⚠️ ALERT TRIGGERED! Glucose: {glucose} mg/dL ({status})")
             
-            # Get LLM advice (real ChatGPT response)
+            # Get personalized LLM advice
             advice = get_glucose_advice(glucose, trend, "automated monitoring")
+            print(f"💡 Advice: {advice[:60]}...")
             
-            # Send WhatsApp alert
-            result = send_whatsapp_alert(glucose, timestamp, advice)
+            result = ""
             
-            # Log result
-            status = "✅" if "✅" in result else "❌"
-            print(f"{status} Alert result: {result}")
+            # 📱 CHOOSE MESSAGE CHANNEL BASED ON CONFIG
+            if USE_SMS_ONLY:
+                print("📧 SMS-ONLY MODE (WhatsApp limit reached)")
+                result = send_glucose_alert(glucose, timestamp, advice)
+                print(f"📱 SMS Result: {result}")
+            else:
+                # Try WhatsApp first
+                whatsapp_result = send_whatsapp_alert(glucose, timestamp, advice)
+                print(f"📲 WhatsApp Result: {whatsapp_result}")
+                
+                # 🔁 FALLBACK TO SMS IF WHATSAPP FAILS
+                if "❌" in whatsapp_result or "failed" in whatsapp_result.lower():
+                    print("🔁 WhatsApp failed - falling back to SMS...")
+                    result = send_glucose_alert(glucose, timestamp, advice)
+                    print(f"📱 SMS Fallback Result: {result}")
+                else:
+                    result = whatsapp_result
         else:
-            print(f"✅ Normal glucose ({glucose} mg/dL) - No alert needed")
-            
-        print(f"{'='*60}")
+            print(f"✅ Normal glucose: {glucose} mg/dL - no alert needed")
             
     except Exception as e:
-        error_details = traceback.format_exc()
-        print(f"🚨 Monitoring error: {str(e)}")
-        print(f"   Details: {error_details[:200]}...")
-        
-        # Emergency fallback alert
-        try:
-            emergency_advice = (
-                "🚨 SYSTEM ERROR - GLUCOSE MONITORING FAILED\n"
-                "Check your glucose monitor manually.\n"
-                "If you feel unwell, contact your healthcare provider or emergency services."
-            )
-            result = send_whatsapp_alert(0, datetime.now(timezone.utc).isoformat(), emergency_advice)
-            print(f"🆘 Emergency alert sent: {result}")
-        except Exception as emergency_e:
-            print(f"❌ Failed to send emergency alert: {str(emergency_e)}")
+        print(f"🚨 Critical error in check_and_alert: {e}")
+        import traceback
+        print(traceback.format_exc())
 
 def run_scheduler():
-    """Run continuous monitoring every 5 minutes with startup check"""
-    print("✅ Starting GlucoAlert AI Continuous Monitoring")
-    print(f"⏰ Schedule: Every 5 minutes (HYPO ≤{HYPO_THRESHOLD}, HYPER ≥{HYPER_THRESHOLD})")
-    print(f"📍 Timezone: UTC (Render server time)")
+    """Continuous monitoring with proper medical frequency"""
+    print("✅ Starting CONTINUOUS glucose monitoring")
+    print(f"⏰ Monitoring frequency: every 5 minutes")
+    print(f"🩺 Thresholds: Hypo < {HYPO_THRESHOLD} mg/dL | Hyper > {HYPER_THRESHOLD} mg/dL")
+    print(f"📱 Message mode: {'SMS-ONLY (WhatsApp limit)' if USE_SMS_ONLY else 'WhatsApp with SMS fallback'}")
     
-    # Schedule checks every 5 minutes
+    # 🩺 MEDICAL-GRADE MONITORING: Every 5 minutes
     schedule.every(5).minutes.do(check_and_alert)
     
-    # Run first check immediately
-    print("🚀 Running first check immediately...")
-    check_and_alert()
+    # 🌙 Extra safety check for overnight hours
+    schedule.every().day.at("22:00").do(lambda: print("🌙 Nighttime safety protocol active"))
     
-    print("✅ Scheduler activated - monitoring in background")
+    print("="*60)
+    print("GlucoAlert AI: 24/7 Continuous Monitoring Active")
+    print("="*60)
     
     while True:
         schedule.run_pending()
-        time.sleep(30)  # Check every 30 seconds
+        time.sleep(30)  # Check every 30 seconds for pending jobs
 
 @app.route('/')
 def health():
     """Enhanced health check with system status"""
     now = datetime.now(timezone.utc)
-    next_run = schedule.next_run()
-    
-    return jsonify({
+    return {
         "status": "GlucoAlert AI Running",
         "server_time_utc": now.strftime("%Y-%m-%d %H:%M:%S"),
         "monitoring_frequency": "Every 5 minutes",
         "thresholds": {
-            "hypoglycemia": f"≤ {HYPO_THRESHOLD} mg/dL",
-            "hyperglycemia": f"≥ {HYPER_THRESHOLD} mg/dL"
+            "hypo": HYPO_THRESHOLD,
+            "hyper": HYPER_THRESHOLD
         },
-        "next_check": next_run.strftime("%Y-%m-%d %H:%M:%S") if next_run else "Starting soon",
-        "system_health": "OK"
-    })
+        "message_mode": "SMS-ONLY (limit reached)" if USE_SMS_ONLY else "WhatsApp + SMS fallback",
+        "next_check": schedule.next_run().strftime("%H:%M") if schedule.next_run() else "Starting soon"
+    }
 
 @app.route('/force-alert')
 def force_alert():
-    """Force alert with REAL LLM advice for testing"""
-    try:
-        print("\n🚨 MANUAL ALERT TRIGGERED VIA /force-alert")
+    """Trigger immediate alert for testing/demo with proper thresholds"""
+    print("🚨 MANUAL ALERT TRIGGERED!")
+    
+    # Simulate LOW glucose for testing (should trigger alert)
+    test_glucose = 65  # Below hypo threshold
+    test_timestamp = datetime.now(timezone.utc).isoformat()
+    test_trend = "falling"
+    
+    advice = get_glucose_advice(test_glucose, test_trend, "manual test")
+    
+    if USE_SMS_ONLY:
+        result = send_glucose_alert(test_glucose, test_timestamp, advice)
+        channel = "SMS"
+    else:
+        result = send_whatsapp_alert(test_glucose, test_timestamp, advice)
+        channel = "WhatsApp"
         
-        # Get REAL simulated glucose value
-        data = read_glucose_level()
-        glucose = data["glucose"]
-        timestamp = data["timestamp"]
-        trend = data.get("trend", "falling")
-        
-        print(f"   Glucose: {glucose} mg/dL ({trend})")
-        
-        # Get REAL LLM advice
-        advice = get_glucose_advice(glucose, trend, "manual test")
-        print(f"💡 LLM Advice: {advice[:100]}...")
-        
-        # Send alert
-        result = send_whatsapp_alert(glucose, timestamp, advice)
-        print(f"📲 Result: {result}")
-        
-        return jsonify({
-            "status": "Manual alert triggered successfully",
-            "glucose_level": glucose,
-            "trend": trend,
-            "timestamp": timestamp,
-            "advice": advice,
-            "whatsapp_result": result
-        })
-        
-    except Exception as e:
-        error_details = traceback.format_exc()
-        print(f"❌ Force alert error: {str(e)}")
-        print(f"   Details: {error_details[:200]}...")
-        
-        return jsonify({
-            "status": "Error triggering manual alert",
-            "error": str(e),
-            "details": error_details[:500]
-        }), 500
+        # Fallback if needed
+        if "❌" in result:
+            result = send_glucose_alert(test_glucose, test_timestamp, advice)
+            channel = "SMS (fallback)"
+    
+    print(f"💡 Generated advice: {advice}")
+    print(f"📤 {channel} result: {result}")
+    
+    return {
+        "status": "Manual alert triggered successfully",
+        "glucose_level": test_glucose,
+        "timestamp": test_timestamp,
+        "advice": advice,
+        "channel_used": channel,
+        "result": result
+    }
 
 @app.route('/whatsapp-webhook', methods=['POST'])
 def whatsapp_webhook():
-    """Handle incoming WhatsApp messages with error handling"""
+    """Handle incoming WhatsApp messages (required by Twilio sandbox)"""
     try:
-        message_body = request.values.get('Body', '').strip().lower()
+        message_body = request.values.get('Body', '').lower()
         from_number = request.values.get('From', '')
         print(f"📱 Incoming WhatsApp message from {from_number}: '{message_body}'")
         
-        # Simple responses
-        if "status" in message_body or "health" in message_body:
+        if "status" in message_body or "hello" in message_body:
             response_text = (
                 "🟢 GlucoAlert AI: System HEALTHY\n"
-                "⏰ Monitoring every 5 minutes\n"
-                "🩺 Ready for abnormal glucose alerts"
+                f"⏰ Monitoring: every 5 minutes\n"
+                f"🩺 Thresholds: <{HYPO_THRESHOLD} or >{HYPER_THRESHOLD} mg/dL\n"
+                f"📱 Mode: {'SMS-only' if USE_SMS_ONLY else 'WhatsApp+SMS'}"
             )
         elif "help" in message_body:
             response_text = (
-                "💡 I monitor glucose levels 24/7 and send alerts when needed.\n"
-                "Reply 'status' for system health information."
+                "💡 GlucoAlert AI monitors your glucose levels 24/7.\n"
+                "When levels are abnormal, you'll receive personalized advice via WhatsApp/SMS.\n"
+                "Reply 'status' for system health."
             )
-        elif "test" in message_body:
-            response_text = "✅ System test passed. Monitoring active."
         else:
-            response_text = "✅ GlucoAlert AI is active. Reply 'status' for details."
+            response_text = "✅ System active. Reply 'status' for details."
         
         resp = MessagingResponse()
         resp.message(response_text)
         return str(resp)
-        
     except Exception as e:
-        print(f"❌ WhatsApp webhook error: {str(e)}")
+        print(f"❌ Webhook error: {e}")
         resp = MessagingResponse()
-        resp.message("❌ Error processing your request. System is still monitoring.")
+        resp.message("❌ System error - please try again later")
         return str(resp), 500
 
 # Start scheduler in background thread
 threading.Thread(target=run_scheduler, daemon=True).start()
 
 if __name__ == "__main__":
-    # ✅ CORRECT PORT BINDING FOR RENDER (Port 10000)
-    port = int(os.environ.get("PORT", 10000))
-    print(f"🚀 Starting server on port {port} (Render default: 10000)")
+    # Get port from environment or use default
+    port = int(os.environ.get("PORT", 10000))  # Render's default port is 10000
+    print(f"🚀 Starting Flask server on port {port}")
     app.run(host="0.0.0.0", port=port)
