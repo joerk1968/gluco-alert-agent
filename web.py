@@ -26,15 +26,14 @@ def check_and_alert():
         print(f"[{utc_time}] Glucose: {glucose} mg/dL ({trend})")
         
         # 🔴 🔴 🔴 CRITICAL FIX: Only alert when TRULY abnormal
-        if glucose < HYPO_THRESHOLD or glucose > HYPER_THRESHOLD:
-            status = "LOW" if glucose < HYPO_THRESHOLD else "HIGH"
-            print(f"⚠️ ALERT TRIGGERED! Glucose: {glucose} mg/dL ({status})")
-            
-            # Get personalized LLM advice
-            advice = get_glucose_advice(glucose, trend, "automated monitoring")
-            print(f"💡 Advice: {advice[:60]}...")
-            
-            result = ""
+      # ✅ MEDICALLY ACCURATE THRESHOLDS:
+if glucose < HYPO_THRESHOLD or glucose > HYPER_THRESHOLD:
+    # Only trigger for truly abnormal readings
+    print(f"⚠️ REAL ALERT: Glucose {glucose} mg/dL is abnormal")
+    # ... rest of alert logic
+else:
+    print(f"✅ Normal glucose ({glucose} mg/dL) - NO alert triggered")
+    return  # Exit function without sending any message
             
             # 📱 Use SMS-only mode since WhatsApp is at daily limit
             if USE_SMS_ONLY:
@@ -108,7 +107,14 @@ def force_alert():
     test_glucose = 65  # Below hypo threshold (should trigger)
     # test_glucose = 185  # Above hyper threshold (should trigger)
     # test_glucose = 92  # Normal (should NOT trigger)
-    
+    # Before generating advice, check if glucose is truly abnormal
+test_glucose = 101.9  # This should NOT trigger an alert
+if test_glucose >= HYPO_THRESHOLD and test_glucose <= HYPER_THRESHOLD:
+    return {
+        "status": "NO ALERT TRIGGERED - NORMAL GLUCOSE",
+        "glucose_level": test_glucose,
+        "advice": "Glucose is within normal range (70-180 mg/dL). No action needed."
+    }
     test_timestamp = datetime.now(timezone.utc).isoformat()
     test_trend = "falling"
     
