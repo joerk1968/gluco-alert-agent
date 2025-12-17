@@ -1,4 +1,4 @@
-# whatsapp_sender.py - FINAL FIXED VERSION
+# whatsapp_sender.py - FIXED WHATSAPP SENDER
 from twilio.rest import Client
 from config import (
     TWILIO_ACCOUNT_SID,
@@ -9,46 +9,59 @@ from config import (
 
 def send_whatsapp_alert(glucose_level, timestamp, advice=""):
     """
-    Sends alert via WhatsApp with proper string handling.
+    Send WhatsApp alert for abnormal glucose levels
+    FIXED: Properly handles string advice
     """
     try:
         client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
         
-        status = "⚠️ LOW" if glucose_level <= 70 else "⚠️ HIGH" if glucose_level >= 180 else "✅ Normal"
-        time_str = timestamp.split('T')[1][:5]  # e.g., "14:30"
+        # Determine status with emojis
+        if glucose_level <= 70:
+            status = "LOW ⚠️"
+        elif glucose_level >= 180:
+            status = "HIGH ⚠️"
+        else:
+            status = "OK ✅"
         
-        # ✅ CRITICAL: Handle advice as plain string, NO .get() calls
+        # Format time (HH:MM)
+        time_str = timestamp.split('T')[1][:5]
+        
+        # ✅ CRITICAL FIX: Treat advice as string, not object
         clean_advice = str(advice).strip() if advice else ""
         
-        body = f"🩺 Glucose Alert [{status}]\nTime: {time_str}\nLevel: {glucose_level} mg/dL"
+        # Build message body
+        body = f"🩺 *Glucose Alert* [{status}]\n"
+        body += f"🕗 {time_str} | 📏 {glucose_level} mg/dL\n"
         
         if clean_advice:
-            body += f"\n\n💡 Advice:\n{clean_advice}"
+            body += f"\n💡 *Advice*\n{clean_advice}"
         else:
+            # Fallback advice if LLM fails
             if glucose_level <= 70:
-                body += "\n\n💡 Quick fix:\nEat 15g fast carbs (e.g., 4 oz juice). Recheck in 15 min."
+                body += "\n💡 *Advice*\nEat 15g fast carbs (juice/tablets). Recheck in 15 min."
             elif glucose_level >= 180:
-                body += "\n\n💡 Suggestion:\nHydrate, consider light activity. Recheck in 1–2 hours."
-
-        # Send SMS
+                body += "\n💡 *Advice*\nHydrate well. Recheck in 1-2 hours."
+        
+        # Send WhatsApp message
         message = client.messages.create(
-            body=body.strip(),
+            body=body,
             from_=TWILIO_WHATSAPP_FROM,
             to=PATIENT_PHONE_WHATSAPP
         )
+        
         return f"✅ WhatsApp sent (SID: {message.sid[:8]}...)"
 
     except Exception as e:
-        error_msg = f"❌ WhatsApp failed: {type(e).__name__}: {str(e)}"
+        error_msg = f"❌ WhatsApp failed: {type(e).__name__} - {str(e)}"
         print(f"🚨 WhatsApp Error: {error_msg}")
         return error_msg
 
-# 🔬 Test
+# 🔬 Test function
 if __name__ == "__main__":
     print("📲 Testing WhatsApp sender...")
     result = send_whatsapp_alert(
         glucose_level=65,
-        timestamp="2025-12-17T06:49:06.456548+00:00",
-        advice="Eat 15g fast-acting carbs now. Avoid driving until >70 mg/dL."
+        timestamp="2025-12-17T14:30:00",
+        advice="Eat 15g fast-acting carbs now. Recheck in 15 minutes."
     )
     print(result)
