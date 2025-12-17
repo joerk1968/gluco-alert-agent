@@ -1,4 +1,4 @@
-# sms_sender.py
+# sms_sender.py - FIXED FOR RELIABLE SMS DELIVERY
 from twilio.rest import Client
 from config import (
     TWILIO_ACCOUNT_SID,
@@ -9,8 +9,8 @@ from config import (
 
 def send_glucose_alert(glucose_level, timestamp, advice=""):
     """
-    Sends a carrier-safe SMS alert (minimal, no emojis, short).
-    Designed for high deliverability in regions like Lebanon (+961).
+    Sends an SMS alert with glucose level and advice.
+    Designed for maximum deliverability in Lebanon (+961).
     """
     try:
         client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
@@ -23,22 +23,22 @@ def send_glucose_alert(glucose_level, timestamp, advice=""):
         else:
             status = "OK"
         
-        # Build minimal, carrier-friendly message
+        # Build minimal, carrier-friendly message (under 160 chars)
         time_str = timestamp.split('T')[1][:5]  # e.g., "14:30"
-        message_body = f"[GLUCO] {time_str} | {glucose_level} mg/dL | {status}"
         
-        # Add *short* advice — only first sentence, no line breaks
         if advice and advice.strip():
-            clean_advice = advice.strip()
-            # Take only first sentence (up to first '.', '!', or 80 chars)
-            first_sentence = clean_advice.split('.')[0].split('!')[0][:80].strip()
-            if first_sentence:
-                message_body += f" | {first_sentence}."
+            # Take only first sentence for SMS
+            first_sentence = advice.strip().split('.')[0].split('!')[0].strip()
+            message_body = f"GLUCO ALERT:{time_str}|{glucose_level}mg/dL|{status}|{first_sentence}"
+        else:
+            message_body = f"GLUCO:{time_str}|{glucose_level}mg/dL|{status}"
         
         # Final safety: truncate to 140 chars (1 SMS segment)
         message_body = message_body[:140]
         
-        # Send
+        print(f"📤 SENDING SMS TO {PATIENT_PHONE_NUMBER}: {message_body}")
+        
+        # Send SMS
         message = client.messages.create(
             body=message_body,
             from_=TWILIO_PHONE_NUMBER,
@@ -47,14 +47,16 @@ def send_glucose_alert(glucose_level, timestamp, advice=""):
         return f"✅ SMS sent (SID: {message.sid[:8]}...)"
     
     except Exception as e:
-        return f"❌ SMS failed: {type(e).__name__}"
+        error_msg = f"❌ SMS failed: {type(e).__name__}: {str(e)}"
+        print(error_msg)
+        return error_msg
 
 # 🔬 Test
 if __name__ == "__main__":
-    print("🧪 Testing carrier-safe SMS...")
+    print("🧪 Testing SMS sender...")
     result = send_glucose_alert(
         glucose_level=65,
-        timestamp="2025-12-15T14:30:00",
-        advice="Consume 15g fast-acting carbs. Recheck in 15 minutes."
+        timestamp="2025-12-17T15:40:00",
+        advice="Eat 15g fast-acting carbs. Recheck in 15 minutes."
     )
-    print(result)
+    print(f"RESULT: {result}")
