@@ -1,4 +1,4 @@
-# web.py - WITH SMS FALLBACK & THRESHOLD FIX
+# web.py - COMPLETELY FIXED VERSION
 from flask import Flask, request
 from twilio.twiml.messaging_response import MessagingResponse
 import threading
@@ -15,7 +15,7 @@ from config import HYPO_THRESHOLD, HYPER_THRESHOLD, USE_SMS_ONLY
 app = Flask(__name__)
 
 def check_and_alert():
-    """Read glucose, get LLM advice, send alert if needed with SMS fallback."""
+    """Read glucose, get LLM advice, send alert ONLY if truly abnormal."""
     try:
         data = read_glucose_level()
         glucose = data["glucose"]
@@ -25,7 +25,7 @@ def check_and_alert():
         
         print(f"[{utc_time}] Glucose: {glucose} mg/dL ({trend})")
         
-        # 🔍 FIXED THRESHOLD LOGIC: Only alert when truly abnormal
+        # 🔴 🔴 🔴 CRITICAL FIX: Only alert when TRULY abnormal
         if glucose < HYPO_THRESHOLD or glucose > HYPER_THRESHOLD:
             status = "LOW" if glucose < HYPO_THRESHOLD else "HIGH"
             print(f"⚠️ ALERT TRIGGERED! Glucose: {glucose} mg/dL ({status})")
@@ -36,7 +36,7 @@ def check_and_alert():
             
             result = ""
             
-            # 📱 CHOOSE MESSAGE CHANNEL BASED ON CONFIG
+            # 📱 Use SMS-only mode since WhatsApp is at daily limit
             if USE_SMS_ONLY:
                 print("📧 SMS-ONLY MODE (WhatsApp limit reached)")
                 result = send_glucose_alert(glucose, timestamp, advice)
@@ -54,7 +54,8 @@ def check_and_alert():
                 else:
                     result = whatsapp_result
         else:
-            print(f"✅ Normal glucose: {glucose} mg/dL - no alert needed")
+            # ✅ CORRECT BEHAVIOR: No alert for normal readings
+            print(f"✅ Normal glucose ({glucose} mg/dL) - no alert triggered")
             
     except Exception as e:
         print(f"🚨 Critical error in check_and_alert: {e}")
@@ -100,39 +101,55 @@ def health():
 
 @app.route('/force-alert')
 def force_alert():
-    """Trigger immediate alert for testing/demo with proper thresholds"""
+    """Trigger immediate alert for testing/demo with PROPER thresholds"""
     print("🚨 MANUAL ALERT TRIGGERED!")
     
-    # Simulate LOW glucose for testing (should trigger alert)
-    test_glucose = 65  # Below hypo threshold
+    # Test with ABNORMAL glucose that SHOULD trigger alert
+    test_glucose = 65  # Below hypo threshold (should trigger)
+    # test_glucose = 185  # Above hyper threshold (should trigger)
+    # test_glucose = 92  # Normal (should NOT trigger)
+    
     test_timestamp = datetime.now(timezone.utc).isoformat()
     test_trend = "falling"
     
-    advice = get_glucose_advice(test_glucose, test_trend, "manual test")
-    
-    if USE_SMS_ONLY:
-        result = send_glucose_alert(test_glucose, test_timestamp, advice)
-        channel = "SMS"
-    else:
-        result = send_whatsapp_alert(test_glucose, test_timestamp, advice)
-        channel = "WhatsApp"
+    # 🔴 🔴 🔴 CRITICAL: Only proceed if glucose is truly abnormal
+    if test_glucose < HYPO_THRESHOLD or test_glucose > HYPER_THRESHOLD:
+        advice = get_glucose_advice(test_glucose, test_trend, "manual test")
         
-        # Fallback if needed
-        if "❌" in result:
+        if USE_SMS_ONLY:
             result = send_glucose_alert(test_glucose, test_timestamp, advice)
-            channel = "SMS (fallback)"
-    
-    print(f"💡 Generated advice: {advice}")
-    print(f"📤 {channel} result: {result}")
-    
-    return {
-        "status": "Manual alert triggered successfully",
-        "glucose_level": test_glucose,
-        "timestamp": test_timestamp,
-        "advice": advice,
-        "channel_used": channel,
-        "result": result
-    }
+            channel = "SMS"
+        else:
+            result = send_whatsapp_alert(test_glucose, test_timestamp, advice)
+            channel = "WhatsApp"
+            
+            # Fallback if needed
+            if "❌" in result:
+                result = send_glucose_alert(test_glucose, test_timestamp, advice)
+                channel = "SMS (fallback)"
+        
+        print(f"💡 Generated advice: {advice}")
+        print(f"📤 {channel} result: {result}")
+        
+        return {
+            "status": "Manual alert triggered successfully",
+            "glucose_level": test_glucose,
+            "timestamp": test_timestamp,
+            "advice": advice,
+            "channel_used": channel,
+            "result": result
+        }
+    else:
+        # ✅ CORRECT BEHAVIOR: No alert for normal readings
+        advice = "No alert needed - glucose is within normal range."
+        print(f"✅ Normal glucose ({test_glucose} mg/dL) - no alert triggered")
+        return {
+            "status": "No alert triggered - normal glucose level",
+            "glucose_level": test_glucose,
+            "timestamp": test_timestamp,
+            "advice": advice,
+            "channel_used": "none"
+        }
 
 @app.route('/whatsapp-webhook', methods=['POST'])
 def whatsapp_webhook():
@@ -152,7 +169,7 @@ def whatsapp_webhook():
         elif "help" in message_body:
             response_text = (
                 "💡 GlucoAlert AI monitors your glucose levels 24/7.\n"
-                "When levels are abnormal, you'll receive personalized advice via WhatsApp/SMS.\n"
+                "When levels are abnormal, you'll receive personalized advice.\n"
                 "Reply 'status' for system health."
             )
         else:
