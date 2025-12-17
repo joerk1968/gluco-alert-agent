@@ -3,8 +3,8 @@ schedule
 pytz
 twilio
 openai
-langchain
-langchain-openai
+langchain==0.1.16
+langchain-openai==0.1.5
 python-dotenv
 pytz
 aiohappyeyeballs==2.6.1
