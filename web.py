@@ -1,14 +1,14 @@
-# web.py - AUTHENTICATION FIXED FOR TWILIO
+# web.py - FIXED WITH BASE64 IMPORT
 from flask import Flask
 import threading
 import time
 import schedule
 from datetime import datetime, timezone, timedelta
 import os
-from twilio.rest import Client
 import random
 import requests
 from urllib.parse import quote
+import base64  # 🔥 CRITICAL FIX: Add base64 import
 
 app = Flask(__name__)
 
@@ -50,18 +50,17 @@ class GlucoseSimulator:
         }
 
 def get_llm_advice(glucose_level, trend, is_night=False):
-    """Generate safe, concise medical advice"""
+    """Generate concise, safe medical advice"""
     if glucose_level < 70:
-        return "LOW BLOOD SUGAR: Consume 15g fast-acting carbs (juice/candy). Wait 15 min, recheck. Seek emergency help if symptoms worsen."
+        return "LOW BLOOD SUGAR: Eat 15g fast carbs (juice/candy). Wait 15 min, recheck. Get help if worse."
     elif glucose_level > 180:
-        return "HIGH BLOOD SUGAR: Drink water, rest. Recheck in 1-2 hours. Contact doctor if >250 mg/dL or symptoms persist."
+        return "HIGH BLOOD SUGAR: Drink water, rest. Recheck in 1-2 hours. Call doctor if >250 mg/dL."
     else:
-        return "Glucose normal. Continue monitoring regularly."
+        return "Glucose normal - keep monitoring."
 
 def send_alert(glucose_level, timestamp, advice, trend, is_night):
-    """Send alert with proper Twilio authentication and Lebanon fallback"""
+    """Send alert with proper authentication and Lebanon fallback"""
     try:
-        # Get credentials - handle both SID/Token and API Key methods
         account_sid = os.environ.get("TWILIO_ACCOUNT_SID")
         auth_token = os.environ.get("TWILIO_AUTH_TOKEN")
         
@@ -73,87 +72,55 @@ def send_alert(glucose_level, timestamp, advice, trend, is_night):
         lebanon_time = utc_time + timedelta(hours=2)
         time_str = lebanon_time.strftime("%H:%M")
         
-        # Lebanon-optimized message (simple for SMS fallback)
+        # Lebanon-optimized message
         status = "LOW" if glucose_level < 70 else "HIGH" if glucose_level > 180 else "OK"
         simple_advice = advice[:50].replace('\n', ' ').replace('•', '-').strip()
         
-        # Try direct HTTP API call (more reliable than Twilio lib for some accounts)
-        whatsapp_from = os.environ.get("TWILIO_WHATSAPP_FROM")
-        patient_whatsapp = os.environ.get("PATIENT_WHATSAPP")
+        # Setup authentication headers
+        auth_header = f"Basic {base64.b64encode((account_sid + ':' + auth_token).encode()).decode()}"
+        headers = {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Authorization": auth_header
+        }
+        
+        # Try SMS first (more reliable for Lebanon)
         sms_from = os.environ.get("TWILIO_SMS_FROM", "+12137621916")
         patient_sms = os.environ.get("PATIENT_SMS", "+9613929206")
         
-        headers = {
-            "Content-Type": "application/x-www-form-urlencoded",
-            "Authorization": f"Basic {base64.b64encode((account_sid + ':' + auth_token).encode()).decode()}"
-        }
+        sms_body = f"GLUCO:{time_str}:{status}:{glucose_level}:{simple_advice}"
+        sms_body = sms_body[:140]  # SMS character limit
         
-        # Try WhatsApp first
-        whatsapp_success = False
         try:
-            if whatsapp_from and patient_whatsapp:
-                data = {
-                    "Body": f"🩺 GlucoAlert\nTime: {time_str}\nLevel: {glucose_level} mg/dL\nAdvice: {simple_advice}",
-                    "From": whatsapp_from,
-                    "To": patient_whatsapp
-                }
-                
-                response = requests.post(
-                    f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Messages.json",
-                    data=data,
-                    headers=headers,
-                    timeout=10
-                )
-                
-                if response.status_code == 201:
-                    print(f"✅ WhatsApp sent successfully (HTTP {response.status_code})")
-                    whatsapp_success = True
-                else:
-                    print(f"❌ WhatsApp failed (HTTP {response.status_code}): {response.text}")
+            data = {
+                "Body": sms_body,
+                "From": sms_from,
+                "To": patient_sms
+            }
+            
+            response = requests.post(
+                f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Messages.json",
+                data=data,
+                headers=headers,
+                timeout=15
+            )
+            
+            if response.status_code == 201:
+                print(f"✅ SMS sent successfully (HTTP {response.status_code})")
+                return True, f"SMS:{response.json().get('sid', '')[:8]}"
+            else:
+                print(f"❌ SMS failed (HTTP {response.status_code}): {response.text}")
+                return False, f"HTTP {response.status_code}"
         
         except Exception as e:
-            print(f"❌ WhatsApp exception: {str(e)}")
-        
-        # Fallback to SMS if WhatsApp fails
-        if not whatsapp_success:
-            print("📵 Falling back to SMS for Lebanon delivery")
-            
-            sms_body = f"GLUCO:{time_str}:{status}:{glucose_level}:{simple_advice}"
-            sms_body = sms_body[:140]  # 160 char limit
-            
-            try:
-                data = {
-                    "Body": sms_body,
-                    "From": sms_from,
-                    "To": patient_sms
-                }
-                
-                response = requests.post(
-                    f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Messages.json",
-                    data=data,
-                    headers=headers,
-                    timeout=10
-                )
-                
-                if response.status_code == 201:
-                    print(f"✅ SMS sent successfully (HTTP {response.status_code})")
-                    return True, f"SMS:{response.json().get('sid', '')[:8]}"
-                else:
-                    print(f"❌ SMS failed (HTTP {response.status_code}): {response.text}")
-                    return False, f"HTTP {response.status_code}"
-            
-            except Exception as e:
-                print(f"❌ SMS exception: {str(e)}")
-                return False, str(e)[:100]
-        
-        return whatsapp_success, "WhatsApp"
+            print(f"❌ SMS exception: {str(e)}")
+            return False, str(e)[:100]
     
     except Exception as e:
         print(f"❌ Alert failed: {str(e)}")
         return False, str(e)[:100]
 
 def check_and_alert():
-    """Continuous monitoring with authentication fixes"""
+    """Continuous monitoring with Lebanon-optimized SMS"""
     try:
         simulator = GlucoseSimulator()
         reading = simulator.generate_reading()
@@ -182,9 +149,9 @@ def check_and_alert():
 
 def run_scheduler():
     """Run continuous monitoring"""
-    print("✅🚀 GLUCOALERT AI - AUTHENTICATION FIXED 🚀✅")
-    print("⏰ Checking every 5 minutes with direct HTTP API calls")
-    print("📱 WhatsApp + SMS fallback with Lebanon optimization")
+    print("✅🚀 GLUCOALERT AI - SMS FIRST FOR LEBANON 🚀✅")
+    print("⏰ Checking every 5 minutes")
+    print("📱 SMS delivery optimized for Lebanon carriers")
     print("="*60)
     
     schedule.every(5).minutes.do(check_and_alert)
@@ -197,16 +164,16 @@ def run_scheduler():
 @app.route('/')
 def health():
     return {
-        "status": "GlucoAlert AI Running - TWILIO AUTH FIXED",
+        "status": "GlucoAlert AI Running - SMS FIRST",
         "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
         "monitoring": "Every 5 minutes",
-        "twilio_status": "Direct HTTP API authentication"
+        "lebanon_delivery": "SMS optimized"
     }
 
 @app.route('/test-alert')
 def test_alert():
-    """Test alert with authentication fixed"""
-    print("🚨 TEST ALERT WITH FIXED AUTHENTICATION")
+    """Test alert with Lebanon-optimized SMS delivery"""
+    print("🚨 TEST ALERT FOR LEBANON SMS DELIVERY")
     
     test_glucose = 62
     test_timestamp = datetime.now(timezone.utc).isoformat()
@@ -219,8 +186,7 @@ def test_alert():
     return {
         "status": "✅ TEST ALERT SENT SUCCESSFULLY" if success else "❌ TEST ALERT FAILED",
         "delivery_result": result,
-        "twilio_auth": "FIXED",
-        "for_presentation": True
+        "lebanon_optimized": True
     }
 
 # Start monitoring
@@ -228,7 +194,6 @@ threading.Thread(target=run_scheduler, daemon=True).start()
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
-    print(f"🚀🚀🚀 GLUCOALERT AI - TWILIO AUTHENTICATION FIXED 🚀🚀🚀")
-    print("✅ Using direct HTTP API calls for reliable Twilio authentication")
-    print(f"🌍 Running on port {port}")
+    print(f"🚀🚀🚀 GLUCOALERT AI - LEBANON SMS OPTIMIZED 🚀🚀🚀")
+    print("✅ SMS delivery prioritized for Lebanon reliability")
     app.run(host="0.0.0.0", port=port)
