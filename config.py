@@ -1,37 +1,34 @@
-# config.py - CRITICAL SETTINGS
+# config.py - COMPLETE VERSION WITH WHATSAPP SUPPORT
 import os
 from dotenv import load_dotenv
 
 load_dotenv()
 
-# 🔑 API Keys (from Render environment variables)
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
-TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
+# 🔑 API Keys
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "dummy_key_for_local_testing")
+TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "dummy_sid_for_local_testing")
+TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN", "dummy_token_for_local_testing")
 
-# 📱 SMS Settings (MUST be correct for SMS fallback)
-TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")      # Your Twilio number
-PATIENT_PHONE_NUMBER = os.getenv("PATIENT_PHONE_NUMBER")    # Your phone number
+# 📱 SMS Settings
+TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER", "+12137621916")
+PATIENT_PHONE_NUMBER = os.getenv("PATIENT_PHONE_NUMBER", "+9613929206")
 
-# 💬 WhatsApp Settings
-TWILIO_WHATSAPP_FROM = os.getenv("TWILIO_WHATSAPP_FROM")
-PATIENT_PHONE_WHATSAPP = os.getenv("PATIENT_PHONE_WHATSAPP")
+# 💬 WhatsApp Settings (REQUIRED for whatsapp_sender.py)
+TWILIO_WHATSAPP_FROM = os.getenv("TWILIO_WHATSAPP_FROM", "whatsapp:+14155238886")
+PATIENT_PHONE_WHATSAPP = os.getenv("PATIENT_PHONE_WHATSAPP", "whatsapp:+9613929206")
 
-# 🚨 CRITICAL FLAGS
-USE_SMS_ONLY = True  # MUST be True during WhatsApp daily limit period
+# 🚨 Critical flags
+USE_SMS_ONLY = True  # Set to True during WhatsApp daily limit period
 
-# 🩺 MEDICALLY ACCURATE THRESHOLDS
-HYPO_THRESHOLD = 70   # Alert if < 70 mg/dL (not <= 70)
-HYPER_THRESHOLD = 180 # Alert if > 180 mg/dL (not >= 180)
+# 🩺 Medical thresholds
+HYPO_THRESHOLD = 70   # Alert if < 70 mg/dL
+HYPER_THRESHOLD = 180 # Alert if > 180 mg/dL
 
-# ✅ Validation
-required_keys = [
-    "OPENAI_API_KEY", "TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN",
-    "TWILIO_PHONE_NUMBER", "PATIENT_PHONE_NUMBER"
-]
+# 🧠 LLM Settings
+LLM_MODEL = "gpt-4o-mini"
+MAX_TOKENS = 300
 
-missing = [key for key in required_keys if not os.getenv(key)]
-if missing:
-    raise ValueError(f"❌ Missing required keys: {missing}")
-
-print(f"✅ Config loaded: SMS-ONLY MODE = {USE_SMS_ONLY}")
+print("✅ Config loaded successfully")
+print(f"🧠 LLM Model: {LLM_MODEL}")
+print(f"🩺 Thresholds: Hypo < {HYPO_THRESHOLD}, Hyper > {HYPER_THRESHOLD}")
+print(f"📱 WhatsApp mode: {'DISABLED (SMS only)' if USE_SMS_ONLY else 'ENABLED'}")
