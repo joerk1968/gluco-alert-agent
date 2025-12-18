@@ -1,10 +1,1 @@
-flask
-schedule
-pytz
-twilio
-openai
-langchain-core
-langchain-openai
-python-dotenv
-jsonpointer
-jsonpatch
+flask==3.0.3
