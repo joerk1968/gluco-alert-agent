@@ -3,7 +3,7 @@ from flask import Flask
 import threading
 import time
 import schedule
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import os
 from twilio.rest import Client
 import random
@@ -122,7 +122,7 @@ def send_whatsapp_alert(glucose_level, timestamp, advice, trend, is_night):
         
         # Format time (Lebanon time = UTC+2)
         utc_time = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
-        lebanon_time = utc_time + timezone(timedelta(hours=2))
+        lebanon_time = utc_time + timedelta(hours=2)
         time_str = lebanon_time.strftime("%H:%M")
         
         # Build message
