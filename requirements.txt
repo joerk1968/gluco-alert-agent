@@ -6,3 +6,5 @@ openai
 langchain-core
 langchain-openai
 python-dotenv
+jsonpointer
+jsonpatch

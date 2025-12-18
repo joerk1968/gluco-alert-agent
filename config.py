@@ -1,7 +1,11 @@
+<<<<<<< HEAD
 # config.py - COMPLETE VERSION WITH WHATSAPP SUPPORT
+=======
+# config.py - MINIMAL WORKING VERSION
+>>>>>>> 9f81185cabac6bc4e3cb3f53e3dac937b3c69a49
 import os
-from dotenv import load_dotenv
 
+<<<<<<< HEAD
 load_dotenv()
 
 # 🔑 API Keys
@@ -32,3 +36,16 @@ print("✅ Config loaded successfully")
 print(f"🧠 LLM Model: {LLM_MODEL}")
 print(f"🩺 Thresholds: Hypo < {HYPO_THRESHOLD}, Hyper > {HYPER_THRESHOLD}")
 print(f"📱 WhatsApp mode: {'DISABLED (SMS only)' if USE_SMS_ONLY else 'ENABLED'}")
+=======
+# Get from environment variables (set in Render dashboard)
+TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
+TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
+TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER") 
+PATIENT_PHONE_NUMBER = os.getenv("PATIENT_PHONE_NUMBER")
+
+# Critical settings
+USE_SMS_ONLY = True  # MUST be True during WhatsApp limit
+
+if not all([TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER, PATIENT_PHONE_NUMBER]):
+    print("❌ MISSING TWILIO CREDENTIALS - SET IN RENDER DASHBOARD")SE_SMS_ONLY}")
+>>>>>>> 9f81185cabac6bc4e3cb3f53e3dac937b3c69a49
