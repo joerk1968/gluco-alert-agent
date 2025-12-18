@@ -1,227 +1,127 @@
-# web.py - GUARANTEED CREDENTIAL LOADING FOR RENDER
+# web.py - DEBUG VERSION TO SHOW ACTUAL ENVIRONMENT VARIABLES
 from flask import Flask
-import threading
-import time
-import schedule
-from datetime import datetime, timezone
 import os
-from twilio.rest import Client
-import random
+from datetime import datetime, timezone
 
 app = Flask(__name__)
 
-def load_environment_variables():
-    """Force load environment variables - critical for Render deployment"""
-    required_vars = [
-        "TWILIO_ACCOUNT_SID",
-        "TWILIO_AUTH_TOKEN", 
-        "TWILIO_WHATSAPP_FROM",
-        "PATIENT_WHATSAPP"
-    ]
-    
-    print("🔍 LOADING ENVIRONMENT VARIABLES...")
-    for var in required_vars:
-        value = os.environ.get(var)
-        if value:
-            print(f"✅ {var}: {value[:8]}...")  # Show first 8 chars for security
-        else:
-            print(f"❌ MISSING: {var}")
-    
-    # Return success status
-    return all(os.environ.get(var) for var in required_vars)
-
-class GlucoseSimulator:
-    """Realistic synthetic glucose generator"""
-    def __init__(self):
-        self.base_glucose = 95
-        self.last_meal_time = time.time() - 7200
-    
-    def generate_reading(self):
-        current_time = datetime.now(timezone.utc)
-        hour = current_time.hour
-        
-        is_night = 23 <= hour or hour < 6
-        meal_effect = random.uniform(30, 80) if time.time() - self.last_meal_time < 3600 else 0
-        
-        base = self.base_glucose + random.uniform(-10, 15)
-        if is_night:
-            base -= random.uniform(5, 15)
-        
-        glucose = base + meal_effect
-        glucose = max(40, min(400, glucose))
-        
-        trend = "rising" if meal_effect > 0 else "falling" if is_night else "stable"
-        
-        return {
-            "glucose": round(glucose, 1),
-            "timestamp": current_time.isoformat(),
-            "trend": trend,
-            "is_night": is_night
-        }
-
-def get_llm_advice(glucose_level, trend, is_night=False):
-    """Generate safe medical advice"""
-    if glucose_level < 70:
-        return ("⚠️ LOW BLOOD SUGAR ALERT\n"
-               "• Consume 15g fast-acting carbohydrates (juice, candy, glucose tabs)\n"
-               "• Wait 15 minutes, then recheck your glucose\n"
-               "• If still below 70 mg/dL, repeat treatment\n"
-               "• Seek emergency help if symptoms worsen or glucose remains low")
-    elif glucose_level > 180:
-        return ("⚠️ HIGH BLOOD SUGAR ALERT\n"
-               "• Drink water to stay hydrated\n"
-               "• Check for ketones if you have type 1 diabetes\n"
-               "• Consider light physical activity (10-min walk)\n"
-               "• Recheck glucose in 1-2 hours")
-    else:
-        return ("✅ GLUCOSE IN TARGET RANGE\n"
-               "• Continue regular monitoring\n"
-               "• Stay hydrated throughout the day")
-
-def send_whatsapp_alert(glucose_level, timestamp, advice, trend, is_night):
-    """Send WhatsApp alert with proper error handling"""
-    try:
-        # Force reload environment variables
-        credentials_loaded = load_environment_variables()
-        
-        if not credentials_loaded:
-            print("❌ CREDENTIALS STILL MISSING AFTER RELOAD")
-            return False, "Missing credentials after reload"
-        
-        account_sid = os.environ["TWILIO_ACCOUNT_SID"]
-        auth_token = os.environ["TWILIO_AUTH_TOKEN"]
-        whatsapp_from = os.environ["TWILIO_WHATSAPP_FROM"]
-        patient_whatsapp = os.environ["PATIENT_WHATSAPP"]
-        
-        status = "LOW" if glucose_level < 70 else "HIGH" if glucose_level > 180 else "NORMAL"
-        status_emoji = "⚠️" if status in ["LOW", "HIGH"] else "✅"
-        time_str = timestamp.split('T')[1][:5]
-        
-        message_body = (
-            f"🩺 *GlucoAlert AI - {status} GLUCOSE*\n"
-            f"*Time*: {time_str} {'(NIGHT)' if is_night else ''}\n"
-            f"*Level*: {glucose_level} mg/dL\n"
-            f"*Trend*: {trend.capitalize()}\n\n"
-            f"*💡 AI MEDICAL ADVICE:*\n{advice}"
-        )
-        
-        print(f"📤 SENDING WHATSAPP: {message_body[:100]}...")
-        client = Client(account_sid, auth_token)
-        message = client.messages.create(
-            body=message_body,
-            from_=whatsapp_from,
-            to=patient_whatsapp
-        )
-        
-        print(f"✅ WHATSAPP SENT SUCCESSFULLY (SID: {message.sid[:8]})")
-        return True, message.sid[:8]
-    
-    except KeyError as e:
-        print(f"❌ MISSING ENVIRONMENT VARIABLE: {e}")
-        return False, f"Missing {str(e)}"
-    except Exception as e:
-        print(f"❌ WHATSAPP ERROR: {type(e).__name__} - {str(e)}")
-        return False, str(e)[:100]
-
-def check_and_alert():
-    """Continuous monitoring"""
-    try:
-        simulator = GlucoseSimulator()
-        reading = simulator.generate_reading()
-        glucose = reading["glucose"]
-        timestamp = reading["timestamp"]
-        trend = reading["trend"]
-        is_night = reading["is_night"]
-        
-        current_time = datetime.now(timezone.utc).strftime("%H:%M")
-        print(f"[{current_time}] Glucose: {glucose} mg/dL ({trend}){' (NIGHT)' if is_night else ''}")
-        
-        if glucose < 70 or glucose > 180:
-            print(f"🚨 ALERT TRIGGERED! Glucose: {glucose} mg/dL")
-            advice = get_llm_advice(glucose, trend, is_night)
-            success, result = send_whatsapp_alert(glucose, timestamp, advice, trend, is_night)
-            
-            if success:
-                print(f"✅ Alert delivered successfully (SID: {result})")
-            else:
-                print(f"❌ Alert delivery failed: {result}")
-        else:
-            print(f"✅ Normal glucose ({glucose} mg/dL) - no alert needed")
-            
-    except Exception as e:
-        print(f"🚨 CRITICAL ERROR: {str(e)}")
-
-def run_scheduler():
-    """Run continuous monitoring"""
-    print("✅ STARTING 24/7 MONITORING")
-    print("⏰ Checking every 5 minutes")
-    
-    # Force load credentials at startup
-    load_environment_variables()
-    
-    schedule.every(5).minutes.do(check_and_alert)
-    check_and_alert()  # Initial check
-    
-    while True:
-        schedule.run_pending()
-        time.sleep(30)
-
 @app.route('/')
 def health():
-    """Health check with credential status"""
-    credentials_loaded = all(os.environ.get(var) for var in [
-        "TWILIO_ACCOUNT_SID",
-        "TWILIO_AUTH_TOKEN",
-        "TWILIO_WHATSAPP_FROM", 
-        "PATIENT_WHATSAPP"
-    ])
+    return {
+        "status": "GlucoAlert AI Debug Mode",
+        "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+        "message": "Debug mode active - check /debug-env for environment variables"
+    }
+
+@app.route('/debug-env')
+def debug_env():
+    """Show ALL environment variables available to the app"""
+    print("🔍 DEBUGGING ENVIRONMENT VARIABLES...")
+    
+    # Get all environment variables
+    all_env = dict(os.environ)
+    
+    # Filter for Twilio-related variables (case-insensitive)
+    twilio_vars = {}
+    for key, value in all_env.items():
+        if "TWILIO" in key.upper() or "WHATSAPP" in key.upper() or "PHONE" in key.upper():
+            twilio_vars[key] = value[:8] + "..." if value else "EMPTY"
+    
+    # Check for required variables (case-insensitive)
+    required = ["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_WHATSAPP_FROM", "PATIENT_WHATSAPP"]
+    found_vars = {}
+    
+    for req in required:
+        found = False
+        for env_key in all_env.keys():
+            if env_key.upper() == req.upper():
+                found_vars[req] = all_env[env_key][:8] + "..." if all_env[env_key] else "EMPTY"
+                found = True
+                break
+        if not found:
+            found_vars[req] = "NOT FOUND"
+    
+    # Print to logs for debugging
+    print("=== ALL ENVIRONMENT VARIABLES ===")
+    for key in sorted(all_env.keys()):
+        print(f"{key}: {all_env[key][:20]}...")
+    print("================================")
+    
+    print("=== TWILIO-RELATED VARIABLES ===")
+    for key, value in twilio_vars.items():
+        print(f"{key}: {value}")
+    print("================================")
+    
+    print("=== REQUIRED VARIABLES STATUS ===")
+    for req, status in found_vars.items():
+        print(f"{req}: {status}")
+    print("================================")
     
     return {
-        "status": "GlucoAlert AI Running",
+        "status": "ENVIRONMENT DEBUG RESULTS",
         "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
-        "monitoring": "Every 5 minutes",
-        "credentials_loaded": credentials_loaded,
-        "environment": "Render Cloud"
+        "twilio_variables_found": twilio_vars,
+        "required_variables_status": found_vars,
+        "total_environment_variables": len(all_env),
+        "debug_note": "Check Render logs for detailed environment variable dump"
     }
 
 @app.route('/test-alert')
 def test_alert():
-    """Test alert with explicit credential check"""
-    print("🚨 MANUAL TEST ALERT TRIGGERED")
+    """Test alert with environment debugging"""
+    print("🚨 TEST ALERT TRIGGERED IN DEBUG MODE")
     
-    # Force reload environment variables
-    credentials_loaded = load_environment_variables()
+    # Try to get credentials with case-insensitive search
+    def get_env_var(name):
+        for key, value in os.environ.items():
+            if key.upper() == name.upper():
+                return value
+        return None
     
-    if not credentials_loaded:
+    account_sid = get_env_var("TWILIO_ACCOUNT_SID")
+    auth_token = get_env_var("TWILIO_AUTH_TOKEN")
+    whatsapp_from = get_env_var("TWILIO_WHATSAPP_FROM")
+    patient_whatsapp = get_env_var("PATIENT_WHATSAPP")
+    
+    credential_status = {
+        "TWILIO_ACCOUNT_SID": "FOUND" if account_sid else "MISSING",
+        "TWILIO_AUTH_TOKEN": "FOUND" if auth_token else "MISSING", 
+        "TWILIO_WHATSAPP_FROM": "FOUND" if whatsapp_from else "MISSING",
+        "PATIENT_WHATSAPP": "FOUND" if patient_whatsapp else "MISSING"
+    }
+    
+    print("=== CREDENTIAL CHECK RESULTS ===")
+    for key, status in credential_status.items():
+        print(f"{key}: {status}")
+    print("================================")
+    
+    if not all([account_sid, auth_token, whatsapp_from, patient_whatsapp]):
         return {
-            "status": "❌ TEST ALERT FAILED",
-            "error": "Missing Twilio credentials",
-            "required": ["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_WHATSAPP_FROM", "PATIENT_WHATSAPP"],
-            "note": "Set these in Render Environment tab and restart service"
+            "status": "❌ TEST ALERT FAILED - MISSING CREDENTIALS",
+            "credential_status": credential_status,
+            "debug_action": "Check /debug-env endpoint and Render Environment tab",
+            "fix_steps": [
+                "1. Go to Render dashboard → Environment tab",
+                "2. Verify ALL 4 variables are set EXACTLY as shown below",
+                "3. Click 'Save Changes' to trigger rebuild",
+                "4. Wait 2 minutes for redeployment"
+            ],
+            "required_variables": {
+                "TWILIO_ACCOUNT_SID": "AC636f695a472e0c37cb2a02cafbb7579d",
+                "TWILIO_AUTH_TOKEN": "1fbafadebe35dd911f8d48ab51f8a7f7", 
+                "TWILIO_WHATSAPP_FROM": "whatsapp:+14155238886",
+                "PATIENT_WHATSAPP": "whatsapp:+9613929206"
+            }
         }, 500
     
-    test_glucose = 62
-    test_timestamp = datetime.now(timezone.utc).isoformat()
-    test_trend = "falling"
-    test_is_night = False
-    
-    advice = get_llm_advice(test_glucose, test_trend, test_is_night)
-    success, result = send_whatsapp_alert(test_glucose, test_timestamp, advice, test_trend, test_is_night)
-    
     return {
-        "status": "✅ TEST ALERT SENT SUCCESSFULLY" if success else "❌ TEST ALERT FAILED",
-        "glucose_level": test_glucose,
-        "timestamp": test_timestamp,
-        "advice": advice,
-        "delivery_result": result,
-        "credentials_loaded": credentials_loaded
+        "status": "✅ CREDENTIALS FOUND - SYSTEM READY FOR ALERTS",
+        "credential_status": credential_status,
+        "next_step": "Remove debug code and redeploy production version"
     }
-
-# Start monitoring
-threading.Thread(target=run_scheduler, daemon=True).start()
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
-    print(f"🚀🚀🚀 GLUCOALERT AI STARTING ON PORT {port} 🚀🚀🚀")
-    print("✅ Environment variables will be loaded at startup")
+    print(f"🚀 DEBUG MODE STARTED ON PORT {port}")
+    print("🔍 Use /debug-env endpoint to diagnose environment issues")
     app.run(host="0.0.0.0", port=port)
