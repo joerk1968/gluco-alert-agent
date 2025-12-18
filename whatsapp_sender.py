@@ -1,114 +1,82 @@
-# whatsapp_sender.py - ROBUST WHATSAPP SENDING WITH ERROR HANDLING
-import traceback
+# whatsapp_sender.py - WhatsApp messaging with proper error handling
 from twilio.rest import Client
-from config import (
-    TWILIO_ACCOUNT_SID,
-    TWILIO_AUTH_TOKEN,
-    TWILIO_WHATSAPP_FROM,
-    PATIENT_PHONE_WHATSAPP
-)
+import os
+import time
+from config import TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_WHATSAPP_FROM
 
 def send_whatsapp_alert(glucose_level, timestamp, advice=""):
     """
-    Send WhatsApp alert with comprehensive error handling
+    Send WhatsApp alert with glucose information and medical advice.
+    Returns success status and message SID or error details.
     """
     try:
-        print("📱 Preparing WhatsApp alert...")
-        
-        # Validate required configuration
-        if not all([TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_WHATSAPP_FROM, PATIENT_PHONE_WHATSAPP]):
-            raise ValueError("Missing Twilio configuration values")
-        
-        # Initialize client
         client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
         
-        # Determine status
-        if glucose_level <= 55:
-            status = "🚨 CRITICAL LOW"
-        elif glucose_level <= 70:
-            status = "⚠️ LOW"
-        elif glucose_level >= 250:
-            status = "🚨 CRITICAL HIGH"
-        elif glucose_level >= 180:
-            status = "⚠️ HIGH"
+        # Determine status emoji and text
+        if glucose_level < 70:
+            status_emoji = "⚠️"
+            status_text = "LOW"
+        elif glucose_level > 180:
+            status_emoji = "⚠️"
+            status_text = "HIGH"
         else:
-            status = "✅ Normal"
+            status_emoji = "✅"
+            status_text = "OK"
         
-        # Format time
-        time_str = timestamp.split('T')[1][:5] if 'T' in timestamp else datetime.now(timezone.utc).strftime("%H:%M")
+        # Format time (remove date part)
+        time_str = timestamp.split('T')[1][:5] if 'T' in timestamp else timestamp
         
-        # Prepare advice (handle None/empty)
-        clean_advice = str(advice).strip() if advice else ""
-        if not clean_advice:
-            clean_advice = "No advice available. Please consult your healthcare provider."
-        
-        # Build message body
-        body = f"🩺 *GlucoAlert AI*\n"
-        body += f"Status: {status}\n"
-        body += f"Time: {time_str} UTC\n"
-        body += f"Glucose: {glucose_level} mg/dL\n\n"
-        body += f"💡 *Medical Guidance*\n{clean_advice}"
-        
-        # Truncate if too long (WhatsApp limit ~1000 chars)
-        if len(body) > 1200:
-            body = body[:1197] + "..."
-            print("⚠️ Message truncated to fit WhatsApp limits")
-        
-        print(f"📤 Sending WhatsApp to {PATIENT_PHONE_WHATSAPP}")
-        print(f"   Message preview: {body[:150]}...")
-        
-        # Send message
-        message = client.messages.create(
-            body=body,
-            from_=TWILIO_WHATSAPP_FROM,
-            to=PATIENT_PHONE_WHATSAPP
+        # Build WhatsApp message with proper formatting
+        message_body = (
+            f"🩺 *GlucoAlert AI*\n"
+            f"*Status*: {status_emoji} {status_text}\n"
+            f"*Time*: {time_str}\n"
+            f"*Level*: {glucose_level} mg/dL\n\n"
         )
         
-        print(f"✅ WhatsApp sent successfully (SID: {message.sid})")
-        return f"✅ WhatsApp sent (SID: {message.sid[:8]}...)"
+        if advice.strip():
+            # Clean advice formatting for WhatsApp
+            clean_advice = advice.strip().replace('\n', ' ').replace('  ', ' ')
+            message_body += f"*💡 Advice:*\n{clean_advice}"
         
+        print(f"📤 SENDING WHATSAPP TO {TWILIO_WHATSAPP_FROM} → {os.getenv('PATIENT_WHATSAPP')}")
+        print(f"💬 Message: {message_body[:100]}...")
+        
+        # Send WhatsApp message
+        message = client.messages.create(
+            body=message_body,
+            from_=TWILIO_WHATSAPP_FROM,
+            to=os.getenv("PATIENT_WHATSAPP"),
+            persistent_action=[f"tel:{os.getenv('PATIENT_SMS').replace('+', '')}"]
+        )
+        
+        print(f"✅ WHATSAPP SENT SUCCESSFULLY (SID: {message.sid[:8]})")
+        return {
+            "success": True,
+            "channel": "whatsapp",
+            "sid": message.sid,
+            "status": message.status
+        }
+    
     except Exception as e:
-        error_details = traceback.format_exc()
         error_type = type(e).__name__
+        error_msg = str(e)
         
-        print(f"❌ WhatsApp sending failed: {error_type}")
-        print(f"   Error: {str(e)}")
-        print(f"   Details: {error_details[:200]}...")
+        print(f"❌ WHATSAPP FAILED: {error_type} - {error_msg}")
         
-        # Fallback to simplified message if original failed
-        try:
-            if "critical" in status.lower() or glucose_level <= 70 or glucose_level >= 180:
-                fallback_body = (
-                    f"🚨 URGENT ALERT\n"
-                    f"Glucose: {glucose_level} mg/dL\n"
-                    f"Time: {time_str} UTC\n"
-                    f"Contact healthcare provider immediately."
-                )
-                client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
-                message = client.messages.create(
-                    body=fallback_body,
-                    from_=TWILIO_WHATSAPP_FROM,
-                    to=PATIENT_PHONE_WHATSAPP
-                )
-                print("✅ Fallback WhatsApp sent successfully")
-                return f"✅ Fallback WhatsApp sent (SID: {message.sid[:8]}...)"
-        except Exception as fallback_e:
-            print(f"❌ Fallback WhatsApp also failed: {type(fallback_e).__name__}")
+        # Handle specific Twilio errors
+        if "429" in error_msg or "limit" in error_msg.lower():
+            print("🚨 WhatsApp daily limit reached - switching to SMS fallback")
+            return {
+                "success": False,
+                "channel": "whatsapp",
+                "error": "daily_limit_reached",
+                "message": "WhatsApp daily message limit exceeded"
+            }
         
-        return f"❌ WhatsApp failed: {error_type} - {str(e)[:100]}"
-
-# 🔬 Test function
-if __name__ == "__main__":
-    print("📲 Testing WhatsApp sender with error handling...")
-    
-    # Test successful message
-    result = send_whatsapp_alert(
-        glucose_level=65,
-        timestamp="2025-12-17T14:30:00",
-        advice="Consume 15g fast-acting carbs (juice/tablets). Recheck in 15 minutes."
-    )
-    print(f"✅ Test result: {result}")
-    
-    # Simulate error test (commented out)
-    # result = send_whatsapp_alert(0, "invalid", None)
-    # print(f"❌ Error test result: {result}")
+        return {
+            "success": False,
+            "channel": "whatsapp",
+            "error": error_type,
+            "message": error_msg[:100]  # Truncate long error messages
+        }
