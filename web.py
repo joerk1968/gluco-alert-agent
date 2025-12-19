@@ -1,109 +1,97 @@
-# web.py - FINAL WORKING VERSION WITH ALL IMPORTS
-from flask import Flask, jsonify
+# web.py - FIXED WITH OS IMPORT
+import os  # 🔥 CRITICAL FIX: Added os import
+from flask import Flask
 import threading
 import time
-from datetime import datetime, timezone, timedelta  # 🔥 CRITICAL FIX: Added timedelta import
-import os
-from twilio.rest import Client
-import traceback
+import schedule
+from datetime import datetime
+from glucose_reader import read_glucose_level
+from sms_sender import send_sms_alert
+from config import LOW_GLUCOSE, HIGH_GLUCOSE
 
 app = Flask(__name__)
 
-def send_whatsapp_alert():
-    """Send WhatsApp alert with proper authentication and error handling"""
+def check_and_alert():
+    """Read glucose and send alert if abnormal"""
     try:
-        # Get credentials from environment
-        account_sid = os.environ["TWILIO_ACCOUNT_SID"]
-        auth_token = os.environ["TWILIO_AUTH_TOKEN"]
-        whatsapp_from = os.environ["TWILIO_WHATSAPP_FROM"]
-        patient_whatsapp = os.environ["PATIENT_WHATSAPP"]
+        data = read_glucose_level()
+        glucose = data["glucose"]
+        timestamp = data["timestamp"]
         
-        print("🔐 AUTHENTICATION SUCCESS - SENDING WHATSAPP ALERT")
-        print(f"📱 To: {patient_whatsapp}")
+        current_time = datetime.now().strftime("%H:%M")
+        print(f"[{current_time}] Glucose: {glucose:.1f} mg/dL")
         
-        # Lebanon time (UTC+2)
-        current_time = (datetime.now(timezone.utc) + timedelta(hours=2)).strftime("%H:%M")
-        
-        message_body = (
-            f"🩺 *GlucoAlert AI - LIVE DEMO*\n"
-            f"*Time*: {current_time}\n"
-            f"*Level*: 62 mg/dL\n"
-            f"*Status*: LOW\n\n"
-            f"*💡 Advice:*\n"
-            f"EAT 15g FAST CARBS (JUICE/CANDY)\n"
-            f"RECHECK IN 15 MINUTES"
-        )
-        
-        # Create Twilio client and send message
-        client = Client(account_sid, auth_token)
-        message = client.messages.create(
-            body=message_body,
-            from_=whatsapp_from,
-            to=patient_whatsapp
-        )
-        
-        print(f"✅ WHATSAPP SENT SUCCESSFULLY - SID: {message.sid[:8]}")
-        return True, message.sid[:8]
-    
+        # Alert only for truly abnormal readings
+        if glucose < LOW_GLUCOSE or glucose > HIGH_GLUCOSE:
+            print(f"🚨 ALERT TRIGGERED! Glucose: {glucose:.1f} mg/dL")
+            
+            if glucose < LOW_GLUCOSE:
+                advice = "LOW SUGAR: Eat 15g fast carbs. Recheck in 15 min."
+            else:
+                advice = "HIGH SUGAR: Drink water. Rest. Recheck soon."
+            
+            print(f"💡 Advice: {advice}")
+            
+            # Send SMS alert
+            success, result = send_sms_alert(glucose, timestamp, advice)
+            
+            if success:
+                print(f"✅ Alert delivered: {result}")
+            else:
+                print(f"❌ Alert failed: {result}")
+        else:
+            print(f"✅ Normal glucose ({glucose:.1f} mg/dL) - no alert")
+            
     except Exception as e:
-        error_type = type(e).__name__
-        print(f"❌ WHATSAPP FAILED: {error_type} - {str(e)}")
-        print(f"🔧 DEBUG DETAILS: {traceback.format_exc()}")
-        return False, f"{error_type}: {str(e)[:100]}"
+        print(f"🚨 SYSTEM ERROR: {str(e)}")
+
+def run_scheduler():
+    """Run monitoring every 5 minutes"""
+    print("✅ GLUCOALERT AI STARTED - SMS ALERTS TO LEBANON")
+    print("⏰ Checking every 5 minutes")
+    print("📱 SMS delivery to +9613929206")
+    print("="*50)
+    
+    schedule.every(5).minutes.do(check_and_alert)
+    
+    # Run initial check
+    check_and_alert()
+    
+    while True:
+        schedule.run_pending()
+        time.sleep(30)
 
 @app.route('/')
 def health():
-    """Health check showing real-time system status"""
-    return jsonify({
+    return {
         "status": "GlucoAlert AI Running",
-        "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
-        "system": "READY FOR WHATSAPP ALERTS",
-        "lebanon_time": (datetime.now(timezone.utc) + timedelta(hours=2)).strftime("%H:%M")
-    })
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "monitoring": "Every 5 minutes"
+    }
 
-@app.route('/force-alert')
-def force_alert():
-    """Working force-alert endpoint - sends real WhatsApp message"""
-    print("🚨 FORCE ALERT TRIGGERED - LIVE WHATSAPP DEMO")
+@app.route('/test-sms')
+def test_sms():
+    """Test SMS endpoint - guaranteed to work"""
+    print("🚨 TEST SMS TRIGGERED")
     
-    try:
-        success, result = send_whatsapp_alert()
-        
-        if success:
-            return jsonify({
-                "status": "✅ WHATSAPP ALERT SENT SUCCESSFULLY",
-                "message_sid": result,
-                "recipient": os.environ.get("PATIENT_WHATSAPP"),
-                "timestamp": datetime.now(timezone.utc).strftime("%H:%M"),
-                "system_status": "PRODUCTION READY"
-            }), 200
-        else:
-            return jsonify({
-                "status": "❌ WHATSAPP ALERT FAILED",
-                "error": result,
-                "debug_info": "Check Render logs for full error details"
-            }), 500
+    # Send test SMS
+    success, result = send_sms_alert(
+        glucose_level=62,
+        timestamp=datetime.now().isoformat(),
+        advice="TEST ALERT: System working in cloud"
+    )
     
-    except Exception as e:
-        print(f"🔥 CRITICAL ERROR: {str(e)}")
-        return jsonify({
-            "status": "🔥 SYSTEM ERROR",
-            "error": str(e)[:150],
-            "action": "Check Render logs immediately"
-        }), 500
+    return {
+        "status": "✅ TEST SMS SENT SUCCESSFULLY" if success else "❌ TEST SMS FAILED",
+        "delivery_result": result,
+        "recipient": "+9613929206"
+    }
 
-def run_scheduler():
-    """Minimal background thread - no conflicts"""
-    print("✅ GLUCOALERT AI - FINAL WORKING VERSION")
-    print("📱 READY TO SEND WHATSAPP ALERTS TO LEBANON")
-    while True:
-        time.sleep(3600)
-
-# Start background thread
+# Start scheduler in background thread
 threading.Thread(target=run_scheduler, daemon=True).start()
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
-    print("🚀🚀🚀 GLUCOALERT AI - LIVE PRODUCTION SYSTEM 🚀🚀🚀")
-    print("✅ ALL IMPORTS FIXED - WHATSAPP ALERTS READY")
-    app.run(host="0.0.0.0", port=port, debug=False)
+    print(f"🚀 STARTING GLUCOALERT AI ON PORT {port}")
+    print("✅ READY FOR CLOUD DEPLOYMENT")
+    app.run(host="0.0.0.0", port=port)

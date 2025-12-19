@@ -4,21 +4,18 @@ from datetime import datetime
 
 def read_glucose_level():
     """Generate realistic synthetic glucose reading"""
-    # Simulate realistic glucose range with trends
-    base_glucose = random.randint(80, 120)
-    variation = random.randint(-10, 15)
-    glucose = base_glucose + variation
+    # Normal range with variation
+    base_level = 95 + random.uniform(-10, 15)
     
-    # Determine trend
-    if variation > 5:
-        trend = "rising"
-    elif variation < -5:
-        trend = "falling"
-    else:
-        trend = "stable"
+    # 5% chance of abnormal reading
+    if random.random() < 0.05:
+        if random.random() < 0.5:
+            return {"glucose": 62, "timestamp": datetime.now().isoformat(), "trend": "falling"}
+        else:
+            return {"glucose": 190, "timestamp": datetime.now().isoformat(), "trend": "rising"}
     
     return {
-        "glucose": glucose,
+        "glucose": base_level,
         "timestamp": datetime.now().isoformat(),
-        "trend": trend
+        "trend": "stable"
     }
