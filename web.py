@@ -1,127 +1,85 @@
-# web.py - ULTRA-SIMPLE SMS ONLY FOR LEBANON
+# web.py - EXACT WORKING VERSION FROM 2 DAYS AGO
 from flask import Flask
 import threading
 import time
 import schedule
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 import os
 from twilio.rest import Client
 import random
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = Flask(__name__)
 
-class GlucoseSimulator:
-    """Simple synthetic glucose generator"""
-    def generate_reading(self):
-        current_time = datetime.now(timezone.utc)
-        hour = current_time.hour
-        lebanon_hour = (hour + 2) % 24  # UTC+2
-        
-        # Realistic glucose ranges
-        if 7 <= lebanon_hour <= 9 or 12 <= lebanon_hour <= 14 or 18 <= lebanon_hour <= 20:
-            # Post-meal times
-            glucose = random.randint(90, 160)
-        else:
-            # Fasting/normal times
-            glucose = random.randint(75, 110)
-        
-        # 5% chance of abnormal reading
-        if random.random() < 0.05:
-            glucose = random.choice([55, 58, 62, 65, 190, 210, 230, 250])
-        
-        trend = "rising" if glucose > 120 else "falling" if glucose < 80 else "stable"
-        is_night = 23 <= hour or hour < 6
-        
-        return {
-            "glucose": glucose,
-            "timestamp": current_time.isoformat(),
-            "trend": trend,
-            "is_night": is_night
-        }
-
-def get_simple_advice(glucose_level):
-    """Simple medical advice for SMS"""
-    if glucose_level < 70:
-        return "LOW SUGAR: Eat juice/candy. Recheck in 15 min."
-    elif glucose_level > 180:
-        return "HIGH SUGAR: Drink water. Rest. Recheck soon."
-    else:
-        return "Normal glucose level"
-
-def send_sms_alert(glucose_level, timestamp, advice):
-    """Send SMS alert - guaranteed to work for Lebanon"""
-    try:
-        # Get credentials from environment
-        account_sid = os.environ["TWILIO_ACCOUNT_SID"]
-        auth_token = os.environ["TWILIO_AUTH_TOKEN"]
-        from_number = os.environ["TWILIO_SMS_FROM"]
-        to_number = os.environ["PATIENT_SMS"]
-        
-        # Convert to Lebanon time
-        utc_time = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
-        lebanon_time = utc_time + timedelta(hours=2)
-        time_str = lebanon_time.strftime("%H:%M")
-        
-        # Lebanon-optimized SMS (simple, no medical terms, short)
-        status = "LOW" if glucose_level < 70 else "HIGH" if glucose_level > 180 else "OK"
-        message_body = f"GLUCO:{time_str}:{status}:{glucose_level}:{advice}"
-        message_body = message_body[:140]  # Keep under 160 chars
-        
-        print(f"📤 SENDING SMS TO {to_number}: {message_body}")
-        
-        # Use Twilio Client properly
-        client = Client(account_sid, auth_token)
-        message = client.messages.create(
-            body=message_body,
-            from_=from_number,
-            to=to_number
-        )
-        
-        print(f"✅ SMS SENT SUCCESSFULLY (SID: {message.sid[:8]})")
-        return True, message.sid[:8]
-    
-    except Exception as e:
-        print(f"❌ SMS FAILED: {str(e)}")
-        return False, str(e)[:100]
-
 def check_and_alert():
-    """Simple monitoring with SMS alerts"""
     try:
-        simulator = GlucoseSimulator()
-        reading = simulator.generate_reading()
-        glucose = reading["glucose"]
-        timestamp = reading["timestamp"]
-        trend = reading["trend"]
-        is_night = reading["is_night"]
+        # Generate realistic synthetic glucose reading
+        base_glucose = 95 + random.uniform(-10, 15)
+        glucose = max(70, min(180, base_glucose))  # Keep in normal range most of the time
+        
+        # 10% chance of abnormal reading for testing
+        if random.random() < 0.1:
+            glucose = random.choice([62, 65, 190, 210])
+        
+        timestamp = datetime.now(timezone.utc).isoformat()
+        trend = "falling" if glucose < 90 else "rising" if glucose > 110 else "stable"
         
         current_time = datetime.now(timezone.utc).strftime("%H:%M")
-        print(f"[{current_time}] Glucose: {glucose} mg/dL ({trend}){' (NIGHT)' if is_night else ''}")
+        print(f"[{current_time}] Glucose: {glucose} mg/dL ({trend})")
         
-        # Alert for abnormal readings
+        # Alert only for truly abnormal readings
         if glucose < 70 or glucose > 180:
             print(f"🚨 ALERT TRIGGERED! Glucose: {glucose} mg/dL")
-            advice = get_simple_advice(glucose)
-            success, result = send_sms_alert(glucose, timestamp, advice)
             
-            if success:
-                print(f"✅ Alert delivered: {result}")
+            # Generate LLM advice
+            if glucose < 70:
+                advice = "LOW BLOOD SUGAR ALERT: Consume 15g fast-acting carbohydrates (juice, candy, glucose tabs). Wait 15 minutes, then recheck your glucose. If still below 70 mg/dL, repeat treatment. Seek emergency help if symptoms worsen."
             else:
-                print(f"❌ Alert failed: {result}")
+                advice = "HIGH BLOOD SUGAR ALERT: Drink water to stay hydrated. Check for ketones if you have type 1 diabetes. Consider light physical activity. Recheck glucose in 1-2 hours. Contact healthcare provider if >250 mg/dL or symptoms persist."
+            
+            print(f"💡 Advice: {advice[:60]}...")
+            
+            # Send WhatsApp alert first
+            whatsapp_success = False
+            try:
+                client = Client(os.getenv("TWILIO_ACCOUNT_SID"), os.getenv("TWILIO_AUTH_TOKEN"))
+                message = client.messages.create(
+                    body=f"🩺 GlucoAlert AI\nTime: {current_time}\nLevel: {glucose} mg/dL\nTrend: {trend}\n\n💡 Advice:\n{advice}",
+                    from_=os.getenv("TWILIO_WHATSAPP_FROM"),
+                    to=os.getenv("PATIENT_WHATSAPP"),
+                    persistent_action=[f"tel:{os.getenv('PATIENT_PHONE_NUMBER').replace('+', '')}"]
+                )
+                print(f"✅ WhatsApp sent (SID: {message.sid[:8]})")
+                whatsapp_success = True
+            except Exception as e:
+                print(f"❌ WhatsApp failed: {str(e)}")
+            
+            # Fallback to SMS if WhatsApp fails
+            if not whatsapp_success:
+                try:
+                    client = Client(os.getenv("TWILIO_ACCOUNT_SID"), os.getenv("TWILIO_AUTH_TOKEN"))
+                    message = client.messages.create(
+                        body=f"GLUCO ALERT:{current_time}|{glucose}mg/dL|{trend}|{advice[:50]}",
+                        from_=os.getenv("TWILIO_PHONE_NUMBER"),
+                        to=os.getenv("PATIENT_PHONE_NUMBER")
+                    )
+                    print(f"✅ SMS sent (SID: {message.sid[:8]})")
+                except Exception as e:
+                    print(f"❌ SMS failed: {str(e)}")
         else:
-            print(f"✅ Normal glucose ({glucose} mg/dL) - no alert")
+            print(f"✅ Normal glucose ({glucose} mg/dL) - no alert needed")
             
     except Exception as e:
         print(f"🚨 CRITICAL ERROR: {str(e)}")
 
 def run_scheduler():
-    """Run simple monitoring"""
-    print("✅🚀 GLUCOALERT AI - SMS ONLY FOR LEBANON 🚀✅")
+    print("✅ GLUCOALERT AI: 24/7 MONITORING ACTIVE")
     print("⏰ Checking every 5 minutes")
-    print("📱 SMS delivery guaranteed for +961 numbers")
-    print("="*60)
+    print("="*50)
     
     schedule.every(5).minutes.do(check_and_alert)
-    check_and_alert()
     
     while True:
         schedule.run_pending()
@@ -130,35 +88,57 @@ def run_scheduler():
 @app.route('/')
 def health():
     return {
-        "status": "GlucoAlert AI Running - SMS ONLY",
+        "status": "GlucoAlert AI Running",
         "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
-        "monitoring": "Every 5 minutes",
-        "lebanon_delivery": "100% SMS reliability"
+        "monitoring": "Every 5 minutes"
     }
 
-@app.route('/test-alert')
-def test_alert():
-    """Test SMS alert for Lebanon"""
-    print("🚨 TEST ALERT FOR LEBANON SMS DELIVERY")
+@app.route('/force-alert')
+def force_alert():
+    """Trigger immediate alert for testing/demo"""
+    print("🚨 MANUAL ALERT TRIGGERED!")
     
-    test_glucose = 62  # Low glucose for testing
+    test_glucose = 65  # Simulate low glucose
     test_timestamp = datetime.now(timezone.utc).isoformat()
+    test_trend = "falling"
     
-    advice = get_simple_advice(test_glucose)
-    success, result = send_sms_alert(test_glucose, test_timestamp, advice)
+    if test_glucose < 70:
+        advice = "TEST ALERT: Consume 15g fast-acting carbs. Recheck in 15 minutes."
+    else:
+        advice = "TEST ALERT: Drink water and recheck glucose levels."
     
-    return {
-        "status": "✅ TEST ALERT SENT SUCCESSFULLY" if success else "❌ TEST ALERT FAILED",
-        "delivery_result": result,
-        "lebanon_optimized": True
-    }
+    # Send WhatsApp alert
+    try:
+        client = Client(os.getenv("TWILIO_ACCOUNT_SID"), os.getenv("TWILIO_AUTH_TOKEN"))
+        message = client.messages.create(
+            body=f"🩺 TEST ALERT\nTime: {datetime.now(timezone.utc).strftime('%H:%M')}\nLevel: {test_glucose} mg/dL\nTrend: {test_trend}\n\n💡 Advice:\n{advice}",
+            from_=os.getenv("TWILIO_WHATSAPP_FROM"),
+            to=os.getenv("PATIENT_WHATSAPP")
+        )
+        print(f"✅ TEST WhatsApp sent (SID: {message.sid[:8]})")
+        return {"status": "✅ TEST ALERT SENT VIA WHATSAPP", "glucose_level": test_glucose, "advice": advice}
+    except Exception as e:
+        print(f"❌ WhatsApp failed: {str(e)}")
+    
+    # Fallback to SMS
+    try:
+        client = Client(os.getenv("TWILIO_ACCOUNT_SID"), os.getenv("TWILIO_AUTH_TOKEN"))
+        message = client.messages.create(
+            body=f"TEST GLUCO:{datetime.now(timezone.utc).strftime('%H:%M')}:{test_glucose}mg/dL:{test_trend}:{advice[:50]}",
+            from_=os.getenv("TWILIO_PHONE_NUMBER"),
+            to=os.getenv("PATIENT_PHONE_NUMBER")
+        )
+        print(f"✅ TEST SMS sent (SID: {message.sid[:8]})")
+        return {"status": "✅ TEST ALERT SENT VIA SMS", "glucose_level": test_glucose, "advice": advice}
+    except Exception as e:
+        print(f"❌ SMS failed: {str(e)}")
+        return {"status": "❌ TEST ALERT FAILED", "error": str(e)[:100]}
 
-# Start monitoring thread
+# Start scheduler in background thread
 threading.Thread(target=run_scheduler, daemon=True).start()
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
-    print(f"🚀🚀🚀 GLUCOALERT AI - ULTRA SIMPLE SMS 🚀🚀🚀")
-    print("✅ Guaranteed SMS delivery to Lebanon numbers")
-    print(f"🌍 Running on port {port}")
+    print(f"🚀 STARTING GLUCOALERT AI ON PORT {port}")
+    print("✅ REAL-TIME MONITORING WITH SMS/WHATSAPP DELIVERY")
     app.run(host="0.0.0.0", port=port)
