@@ -1,11 +1,21 @@
-# sms_sender.py
+# sms_sender.py - DEBUG VERSION
 from twilio.rest import Client
 from config import TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER, PATIENT_PHONE_NUMBER
+import os
 
 def send_sms_alert(glucose_level, timestamp, advice=""):
-    """Send SMS alert - guaranteed to work for Lebanon"""
+    """Send SMS alert with detailed debugging"""
     try:
+        print("🔍 DEBUGGING TWILIO CREDENTIALS:")
+        print(f"   Account SID from config: {TWILIO_ACCOUNT_SID[:8]}...{TWILIO_ACCOUNT_SID[-4:]}")
+        print(f"   Auth Token from config: {TWILIO_AUTH_TOKEN[:4]}...{TWILIO_AUTH_TOKEN[-4:]}")
+        print(f"   From number: {TWILIO_PHONE_NUMBER}")
+        print(f"   To number: {PATIENT_PHONE_NUMBER}")
+        
+        # Try to create client
+        print("🔧 CREATING TWILIO CLIENT...")
         client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+        print("✅ TWILIO CLIENT CREATED SUCCESSFULLY")
         
         # Lebanon-friendly message format
         time_str = timestamp.split('T')[1][:5]
@@ -26,5 +36,10 @@ def send_sms_alert(glucose_level, timestamp, advice=""):
         return True, message.sid[:8]
     
     except Exception as e:
-        print(f"❌ SMS FAILED: {str(e)}")
-        return False, str(e)[:100]
+        error_type = type(e).__name__
+        print(f"❌ SMS FAILED: {error_type} - {str(e)}")
+        print("🔧 ENVIRONMENT VARIABLES IN RENDER:")
+        for key in ["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_PHONE_NUMBER", "PATIENT_PHONE_NUMBER"]:
+            value = os.environ.get(key)
+            print(f"   {key}: {'FOUND' if value else 'MISSING'}")
+        return False, f"{error_type}: {str(e)[:100]}"

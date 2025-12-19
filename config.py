@@ -1,11 +1,18 @@
-# config.py
+# config.py - DEBUG VERSION
 import os
 
-# Get these from your Render Environment tab later
-TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "AC636f695a472e0c37cb2a02cafbb7579d")
-TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN", "1fbafadebe35dd911f8d48ab51f8a7f7")
-TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER", "+12137621916")
-PATIENT_PHONE_NUMBER = os.getenv("PATIENT_PHONE_NUMBER", "+9613929206")
+# Get these from environment - NO DEFAULTS
+TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID", "")
+TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN", "")
+TWILIO_PHONE_NUMBER = os.environ.get("TWILIO_PHONE_NUMBER", "")
+PATIENT_PHONE_NUMBER = os.environ.get("PATIENT_PHONE_NUMBER", "")
+
+# Debug print
+print("🔐 TWILIO CREDENTIALS LOADED:")
+print(f"   SID: {'SET' if TWILIO_ACCOUNT_SID else 'NOT SET'}")
+print(f"   TOKEN: {'SET' if TWILIO_AUTH_TOKEN else 'NOT SET'}")
+print(f"   FROM: {TWILIO_PHONE_NUMBER}")
+print(f"   TO: {PATIENT_PHONE_NUMBER}")
 
 # Medical thresholds
 LOW_GLUCOSE = 70
