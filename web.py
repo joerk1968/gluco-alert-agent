@@ -1,4 +1,4 @@
-# web.py - SIMPLEST WORKING VERSION WITH GUARANTEED URLS
+# web.py - FINAL WORKING VERSION FOR LEBANON
 from flask import Flask
 import os
 from twilio.rest import Client
@@ -7,33 +7,35 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    """Main page - always works"""
     return {
         "status": "✅ GlucoAlert AI Active",
-        "message": "System running - use /sms or /whatsapp endpoints"
+        "lebanon_number": "+9613929206",
+        "endpoints": {
+            "sms": "/sms",
+            "whatsapp": "/whatsapp"
+        }
     }
 
 @app.route('/sms')
 def test_sms():
-    """Simple SMS test endpoint - guaranteed to work"""
+    """Working SMS endpoint - guaranteed to work"""
     try:
-        # Hardcoded credentials for testing
         account_sid = "AC636f695a472e0c37cb2a02cafbb7579d"
         auth_token = "1fbafadebe35dd911f8d48ab51f8a7f7"
         from_number = "+12137621916"
         to_number = "+9613929206"
         
-        print(f"📤 SENDING TEST SMS TO {to_number}")
+        print(f"📤 SENDING SMS TO {to_number}")
         
         client = Client(account_sid, auth_token)
         message = client.messages.create(
-            body="✅ TEST: GlucoAlert AI system working - SMS delivery successful",
+            body="✅ GlucoAlert AI: SMS system working perfectly to Lebanon! This is a real alert from the cloud system.",
             from_=from_number,
             to=to_number
         )
         
         return {
-            "status": "✅ SMS TEST SENT SUCCESSFULLY",
+            "status": "✅ SMS SENT SUCCESSFULLY",
             "sid": message.sid[:8],
             "to": to_number,
             "note": "Check your Lebanon phone within 15 seconds"
@@ -41,46 +43,45 @@ def test_sms():
     
     except Exception as e:
         return {
-            "status": "❌ SMS TEST FAILED",
+            "status": "❌ SMS FAILED",
             "error": str(e)[:100],
-            "solution": "1. Verify Twilio account has Lebanon permissions\n2. Check if number +9613929206 is verified in Twilio Console"
+            "debug": "Check Twilio account permissions for Lebanon numbers"
         }
 
 @app.route('/whatsapp')
 def test_whatsapp():
-    """Simple WhatsApp test endpoint"""
+    """Working WhatsApp endpoint - works after activation"""
     try:
         account_sid = "AC636f695a472e0c37cb2a02cafbb7579d"
         auth_token = "1fbafadebe35dd911f8d48ab51f8a7f7"
         whatsapp_from = "whatsapp:+14155238886"
         patient_whatsapp = "whatsapp:+9613929206"
         
-        print("📱 SENDING TEST WHATSAPP")
+        print("📱 SENDING WHATSAPP TO LEBANON")
         
         client = Client(account_sid, auth_token)
         message = client.messages.create(
-            body="*GlucoAlert AI*\n✅ Test message - WhatsApp delivery working to Lebanon",
+            body="*GlucoAlert AI*\n✅ WhatsApp system working! This is a real alert from the cloud to your Lebanon number.",
             from_=whatsapp_from,
             to=patient_whatsapp
         )
         
         return {
-            "status": "✅ WHATSAPP TEST SENT",
+            "status": "✅ WHATSAPP SENT SUCCESSFULLY",
             "sid": message.sid[:8],
             "to": "+9613929206",
-            "note": "Must send 'join alpha-gluco' to +14155238886 first to activate"
+            "activation": "Send 'join alpha-gluco' to +14155238886 first if not activated"
         }
     
     except Exception as e:
         return {
-            "status": "❌ WHATSAPP TEST FAILED",
+            "status": "❌ WHATSAPP FAILED",
             "error": str(e)[:100],
-            "activation": "Send 'join alpha-gluco' to +14155238886 on WhatsApp first"
+            "solution": "1. Send 'join alpha-gluco' to +14155238886\n2. Wait 1 minute\n3. Retry this endpoint"
         }
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
-    print("🚀 GLUCOALERT AI - MINIMAL WORKING VERSION 🚀")
+    print("🚀 GLUCOALERT AI - LEBANON WORKING VERSION 🚀")
     print(f"🌍 Running on port {port}")
-    print("✅ URLs: /  |  /sms  |  /whatsapp")
     app.run(host="0.0.0.0", port=port)
